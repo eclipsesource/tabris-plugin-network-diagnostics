@@ -38,10 +38,13 @@ Mandatory pieces:
 
   > **Warning — the three reference plugins get this wrong.** `SMBClient.js`, `OpenIdConnect.js` and
   > `DeviceCheck.js` (written against Tabris 3.7) do `super(); this._nativeCreate(this._nativeType,
-  > properties)`. On 3.8+ that runs `_nativeCreate` twice: the first call already created a native peer,
-  > and the second `_register()` tries to redefine the non-configurable `cid` property — a second native
-  > object at best, a `TypeError` at worst. Follow `~/git/tabris-plugin-omr-2/www/*.js`
-  > (`super(properties)` / `super({modelFile, labels})`) instead.
+  > properties)`. On 3.8+ that runs `_nativeCreate` twice: `_register()` mints a second `cid`
+  > (`NativeObjectRegistry.register` always generates a fresh id, and `cid` stays configurable because
+  > the constructor first assigns it as a plain property) and a second `create` operation is sent — two
+  > native peers exist and the first one is never disposed. Because `_nativeCreate(param)` takes one
+  > argument, the legacy second argument (`properties`) is ignored, so construction properties are
+  > silently dropped. Follow `~/git/tabris-plugin-omr-2/www/*.js` (`super(properties)` /
+  > `super({modelFile, labels})`) instead.
 - `get _nativeType()` returning the same string as `+ remoteObjectType`.
 - `tabris` and `tabris.NativeObject` are globals inside a plugin module — there is no `require('tabris')`
   in any of the three plugins' `www/` files.

@@ -52,9 +52,10 @@
 ## Pitfalls
 
 **Registration**
-- A JS constructor that calls `this._nativeCreate(...)` after `super()` → two `create` operations
-  (or a `TypeError` on redefining `cid`) on Tabris 3.8+. The base class already creates the peer;
-  write `super(properties)`.
+- A JS constructor that calls `this._nativeCreate(...)` after `super()` → two registrations and two
+  `create` operations on Tabris 3.8+ (the first native peer leaks) and the constructor's properties
+  are dropped, because `_nativeCreate(param)` takes a single argument. The base class already creates
+  the peer; write `super(properties)`.
 - Missing `@objc(ClassName)` on a Swift class → `NSClassFromString` fails → startup throws
   `TabrisError(.resourceLoading)`, not a silent degradation.
 - The plist entry, the `@objc(...)` name and the class name must all agree.
