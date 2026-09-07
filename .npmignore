@@ -1,0 +1,12 @@
+example/
+Tests/
+scripts/
+docs/knowledge/
+.build/
+.swiftpm/
+*.xcresult
+.github
+.gitignore
+.swiftlint.yml
+CLAUDE.md
+tmp.txt

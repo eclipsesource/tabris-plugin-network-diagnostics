@@ -1,0 +1,20 @@
+{
+  "name": "tabris-plugin-network-diagnostics",
+  "version": "1.0.0",
+  "description": "Network diagnostics for Tabris.js apps on iOS: interfaces, gateways, DNS servers, ICMP ping, DNS queries, HTTP probes and an all-in-one diagnosis.",
+  "cordova": {
+    "id": "tabris-plugin-network-diagnostics",
+    "platforms": [
+      "ios"
+    ]
+  },
+  "keywords": [
+    "ecosystem:cordova",
+    "ecosystem:tabris",
+    "tabris",
+    "tabris.js",
+    "network",
+    "diagnostics"
+  ],
+  "author": "EclipseSource"
+}

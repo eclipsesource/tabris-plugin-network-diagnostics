@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        id="tabris-plugin-network-diagnostics"
+        version="1.0.0">
+
+  <name>Tabris.js Network Diagnostics Plugin</name>
+  <description>Network diagnostics for Tabris.js apps on iOS: interfaces, gateways, DNS servers, ICMP ping, direct DNS queries, HTTP probes and an all-in-one diagnosis with a verdict.</description>
+  <author>EclipseSource</author>
+
+  <engines>
+    <engine name="cordova" version=">=3.8.0" />
+  </engines>
+
+  <js-module src="www/NetworkDiagnostics.js" name="NetworkDiagnostics">
+    <clobbers target="es.NetworkDiagnostics" />
+  </js-module>
+
+  <platform name="ios">
+
+    <!-- The library uses ContinuousClock and Task.sleep(for:) (iOS 16) and is
+         written in Swift. Generated Tabris projects declare neither a Swift
+         version nor a deployment target that high; the Tabris cordova-ios
+         fork reads both preferences on every prepare, and an app's own
+         preference takes precedence over these. -->
+    <config-file target="config.xml" parent="/*">
+      <preference name="deployment-target" value="16.0" />
+      <preference name="SwiftVersion" value="5.0" />
+    </config-file>
+
+    <config-file target="*TabrisPlugins.plist" parent="classes">
+      <array>
+        <string>NetworkDiagnosticsPlugin</string>
+      </array>
+    </config-file>
+
+    <config-file target="*-Info.plist" parent="NSLocalNetworkUsageDescription">
+      <string>Pings the router and queries the DNS servers on the local network to diagnose connectivity.</string>
+    </config-file>
+
+    <header-file src="src/ios/NetworkDiagnostics-BridgingHeader.h" type="BridgingHeader" />
+    <source-file src="src/ios/NetworkDiagnosticsPlugin.swift" />
+    <source-file src="src/ios/TabrisCall.swift" />
+
+    <source-file src="Sources/CResolv/CResolv.c" />
+    <header-file src="Sources/CResolv/include/CResolv.h" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/Discovery+Tabris.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/TabrisError.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/TabrisRepresentable.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Configuration/DiagnosticConfiguration.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/DNSMessage.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/DNSServerParser.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/HTTPErrorClassifier.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/ICMPPacket.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/InterfaceParser.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/PingOutcomeCalculation.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/SocketAddressFormatter.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/SummaryBuilder.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Core/Timeout.swift" />
+    <source-file src="Sources/NetworkDiagnostics/DiagnosticPrimitives.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/DiagnosticEvent.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/DiagnosticReport.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/DiagnosticSummary.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/DNSServerInfo.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/GatewayInfo.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/HttpHostResult.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/InterfaceDiscovery.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/InternetAddress.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/NetworkInterfaceInfo.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Model/PingHostResult.swift" />
+    <source-file src="Sources/NetworkDiagnostics/NetworkDiagnostics.swift" />
+    <source-file src="Sources/NetworkDiagnostics/NetworkDiagnosticsLog.swift" />
+    <source-file src="Sources/NetworkDiagnostics/ProbeRunner.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/DiagnosticServices.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/DNSQuerying.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/DNSServerReading.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/GatewayDiscovering.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/HostResolving.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/HTTPProbing.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/ICMPEchoSession.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/InterfaceEnumerating.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/Pinging.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Services/ServiceFailure.swift" />
+
+    <framework src="libresolv.tbd" />
+
+  </platform>
+
+</plugin>

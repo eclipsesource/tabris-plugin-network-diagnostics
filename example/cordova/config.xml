@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        id="com.eclipsesource.tabris.networkdiagnostics.example"
+        version="1.0.0">
+  <name>Tabris.js Network Diagnostics Plugin Example</name>
+  <description>Example for the Tabris.js Network Diagnostics plugin.</description>
+  <author email="tabris@eclipsesource.com" href="https://tabrisjs.com">EclipseSource</author>
+
+  <preference name="EnableDeveloperConsole" value="true" />
+
+  <plugin name="tabris-plugin-network-diagnostics" spec="../" />
+
+</widget>
