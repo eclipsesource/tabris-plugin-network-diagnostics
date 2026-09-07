@@ -1,0 +1,142 @@
+# 02 — Packaging, `plugin.xml` and the build
+
+## Repository layout (identical in all three reference plugins)
+
+```
+plugin.xml                 Cordova plugin descriptor — the single source of truth
+package.json               npm/Cordova metadata (id, platforms, keywords)
+www/<Type>.js              JavaScript proxy, one file per native type
+src/ios/<Type>.swift       native implementation
+src/ios/Tabris-BridgingHeader.h
+docs/<name>.md             JS API documentation (openidconnect)
+example/                   standalone Tabris.js app that consumes the plugin
+  package.json             { "dependencies": { "tabris": "nightly" } }
+  cordova/config.xml       references the plugin by relative path (spec="../")
+  src/app.js
+  build.fish               copies example to a temp dir, rewrites "../" to an absolute path, `tabris build ios`
+.npmignore                 excludes example/, project/, .idea/, .vscode/, .github
+```
+
+## `plugin.xml` — the elements that matter
+
+```xml
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        id="tabris-plugin-smb2" version="3.1.0">
+
+  <engines><engine name="cordova" version=">=3.8.0" /></engines>
+
+  <!-- 1. JS proxy + the global it is exposed as -->
+  <js-module src="www/SMBClient.js" name="SMBClient">
+    <clobbers target="es.SMBClient" />
+  </js-module>
+
+  <platform name="ios">
+    <!-- 2. register the Objective-C class name with the Tabris runtime -->
+    <config-file target="*TabrisPlugins.plist" parent="classes">
+      <array>
+        <string>SMBClient</string>
+      </array>
+    </config-file>
+
+    <!-- 3. Swift needs a bridging header that imports the framework -->
+    <header-file src="src/ios/Tabris-BridgingHeader.h" type="BridgingHeader"/>
+    <source-file src="src/ios/SMBClient.swift" />
+
+    <!-- 4. third-party dependencies via CocoaPods -->
+    <podspec>
+      <pods use-frameworks="true">
+        <pod name="AMSMB2" spec="~> 2.7" />
+      </pods>
+    </podspec>
+  </platform>
+</plugin>
+```
+
+Notes:
+- `<clobbers target="es.SMBClient" />` puts the class on the global `es` namespace, so app code writes
+  `new es.SMBClient()` — no `require`. All three plugins use the `es.` prefix.
+- `<config-file target="*TabrisPlugins.plist" parent="classes">` is the registration hook described in
+  `01_architecture.md`. The generated file looks like:
+  ```xml
+  <dict><key>classes</key><array><string>CordovaPluginBridge</string></array></dict>
+  ```
+- One plugin may register **several** types: Diamond lists four (`AddDiamondButton`,
+  `AddDiamondWorkflow`, `DiamondLibrary`, `DeviceCheck`) with four `<js-module>` entries.
+- `<js-module>` may sit inside `<platform name="ios">` (Diamond) or at plugin level (SMB2, OIDC).
+  Platform level is correct for an iOS-only plugin; plugin level also works because the plugin
+  declares `"platforms": ["ios"]` in `package.json`.
+- Every `.swift` file needs its own `<source-file>` entry. OIDC lists four.
+- Objective-C files need `<header-file>` **and** `<source-file>` entries (Diamond lists both for each).
+
+## Bridging header
+
+Cordova has no notion of Swift, so the bridging header is what makes the framework visible.
+It is identical in all three plugins:
+
+```objc
+#import <Tabris/Tabris.h>
+```
+
+`Tabris/Tabris.h` is an umbrella header — it pulls in `BasicObject`, `Widget`, `Control`,
+`JSFunctionValue`, `ArrayBuffer`, `Console`, `LogEntry`, `TabrisContext`, the type-safe
+`NSDictionary` getters, `TypeConverter`, `ObjectRegistry`, `FloatingViewController` and
+`PublicTypes.h` (the `ConsoleEntryType` / `LogLevel` enums).
+
+Only **one** bridging header can exist per Xcode target. Cordova's `type="BridgingHeader"` merges
+plugin-supplied headers, which is why every plugin can ship the same one-line file.
+
+## Swift build settings — the `add-swift-support.js` hook
+
+Cordova's generated project has no `SWIFT_VERSION`, so a Swift file fails to compile. OIDC ships a
+hook (`hook/add-swift-support.js`, dependencies `xcode` + `semver` in `package.json`) registered for
+three phases:
+
+```xml
+<hook type="after_prepare"       src="hook/add-swift-support.js" />
+<hook type="after_platform_add"  src="hook/add-swift-support.js" />
+<hook type="after_plugin_add"    src="hook/add-swift-support.js" />
+```
+
+What it does, by editing `platforms/ios/<name>.xcodeproj/project.pbxproj` with the `xcode` module:
+- sets `SWIFT_VERSION` to `5.0` on every build configuration that lacks it, or to the value of the
+  `UseSwiftLanguageVersion` iOS preference from `config.xml` when present;
+- forces `SWIFT_OPTIMIZATION_LEVEL = "-Onone"` on the `Debug` configuration.
+
+It guards on `context.cmdLine` because Cordova fires hooks more often than the work is needed.
+
+SMB2 and Diamond do **not** ship this hook — SMB2 compiles because CocoaPods with
+`use-frameworks="true"` already forces a Swift toolchain configuration; Diamond's Swift file
+(`SwiftObject.swift`) is not listed in `plugin.xml` at all (it only exists in the standalone dev
+project).
+
+## Consuming the plugin from an app
+
+```xml
+<plugin name="tabris-plugin-openidconnect"
+        spec="https://github.com/eclipsesource/tabris-plugin-openidconnect.git" />
+```
+
+The example apps use `spec="../"` (local path) plus a `build.fish` that copies the example into a
+temp directory and rewrites `../` to an absolute path, so `tabris build ios` resolves the plugin
+without polluting the repo.
+
+Set `<preference name="EnableDeveloperConsole" value="true" />` — the plugin console output
+(`10_console_and_logging.md`) is only visible with the developer console enabled.
+
+## Standalone Xcode project for native development (Diamond)
+
+Editing plugin sources inside `platforms/ios` is throwaway work. Diamond keeps a real framework
+target at `src/ios/diamond.xcodeproj` so Xcode gives completion, diagnostics and tests:
+
+- `SWIFT_VERSION = 5.0`, `DEFINES_MODULE = YES`, `SKIP_INSTALL = YES`,
+  `IPHONEOS_DEPLOYMENT_TARGET = 11.0`
+- `FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(PROJECT_DIR)/tabris_framework")`
+- `src/ios/get_tabris_framework.sh` downloads `Tabris.xcframework` into `tabris_framework/`:
+  it resolves the version with `npm show tabris version` (or the newest nightly with
+  `npm view tabris versions --json | jq -r '.[-1]'`) and fetches
+  `https://tabrisjs.com/api/v1/downloads/cli/$VERSION/ios` with the header
+  `X-Tabris-Build-Key: $(cat ~/.tabris-cli/build.key)`.
+- A test target (`src/ios/diamondTests`) exists but is an empty XCTest skeleton.
+- `scripts/update-sources.sh`, registered as `<hook type="before_plugin_install">`, copies sources
+  back from a built example app into the repo. It is a personal round-trip helper with hardcoded
+  `~/git/...` paths — treat it as an example of the workflow, not as something to reuse verbatim.

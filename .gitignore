@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+*.xcresult
+DerivedData/
+node_modules/
+example/build/
+example/node_modules/
+example/package-lock.json
+.DS_Store
