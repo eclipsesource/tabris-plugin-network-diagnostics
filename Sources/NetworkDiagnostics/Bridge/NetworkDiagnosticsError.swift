@@ -1,4 +1,4 @@
-enum TabrisErrorCode: String {
+enum NetworkDiagnosticsErrorCode: String {
     case invalidParameter
     case unavailable
     case alreadyRunning
@@ -6,11 +6,11 @@ enum TabrisErrorCode: String {
     case disposed
 }
 
-struct TabrisError: Error, Equatable {
-    let code: TabrisErrorCode
+struct NetworkDiagnosticsError: Error, Equatable {
+    let code: NetworkDiagnosticsErrorCode
     let message: String
 
-    init(code: TabrisErrorCode, message: String) {
+    init(code: NetworkDiagnosticsErrorCode, message: String) {
         self.code = code
         self.message = message
     }
@@ -19,6 +19,8 @@ struct TabrisError: Error, Equatable {
         switch error {
         case let error as Self:
             self = error
+        case let error as NetworkDiagnosticsParameterError:
+            self.init(code: .invalidParameter, message: error.errorDescription ?? "invalid parameter")
         case let failure as ServiceFailure:
             self.init(code: .unavailable, message: failure.description)
         case is CancellationError:
@@ -29,7 +31,7 @@ struct TabrisError: Error, Equatable {
     }
 }
 
-extension TabrisError: TabrisRepresentable {
+extension NetworkDiagnosticsError: NetworkDiagnosticsRepresentable {
     var tabrisObject: [String: Any] {
         ["code": code.rawValue, "message": message]
     }

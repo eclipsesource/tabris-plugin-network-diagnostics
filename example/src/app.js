@@ -1,33 +1,45 @@
-const {ScrollView, TextView, contentView} = require('tabris');
-
-const scrollView = new ScrollView({layoutData: 'stretch'}).appendTo(contentView);
-const output = new TextView({
-  left: 16, top: 16, right: 16,
-  font: '12px monospace',
-  text: 'Enumerating interfaces…'
-}).appendTo(scrollView);
-const lines = [];
+const {Button, ScrollView, Stack, TextView, contentView} = require('tabris');
 
 const diagnostics = new es.NetworkDiagnostics();
+const lines = [];
 
-diagnostics.interfaces()
-  .then(interfaces => show('interfaces', interfaces))
-  .catch(error => show(`interfaces rejected (${error.code})`, error.message))
-  .then(() => {
-    diagnostics.dispose();
-    show('dispose', 'NetworkDiagnostics disposed');
-    return disposeWhilePending();
-  });
+const checks = [
+  ['interfaces', () => diagnostics.interfaces()],
+  ['gateways', () => diagnostics.gateways()],
+  ['dnsServers', () => diagnostics.dnsServers()],
+  ['ping 127.0.0.1', () => diagnostics.ping('127.0.0.1', {packetCount: 2})],
+  ['ping (empty host)', () => diagnostics.ping('')],
+  ['dnsQuery apple.com', async () => {
+    const [server] = await diagnostics.dnsServers();
+    return diagnostics.dnsQuery('apple.com', {server});
+  }],
+  ['http https://www.apple.com', () => diagnostics.http('https://www.apple.com')],
+  ['http https://127.0.0.1:1/', () => diagnostics.http('https://127.0.0.1:1/')]
+];
 
-// Disposing an object with a call in flight must reject that call with the
-// `disposed` code — the only code path that produces it is the native destroy().
-function disposeWhilePending() {
-  const probe = new es.NetworkDiagnostics();
-  const pending = probe.interfaces();
-  probe.dispose();
-  return pending
-    .then(() => show('dispose check', 'unexpected: promise resolved after dispose'))
-    .catch(error => show('dispose check', `rejected with code ${error.code}: ${error.message}`));
+const scrollView = new ScrollView({layoutData: 'stretch'}).appendTo(contentView);
+const stack = new Stack({left: 16, top: 16, right: 16, spacing: 8}).appendTo(scrollView);
+
+stack.append(
+  new Button({id: 'runAll', text: 'Run all checks'}).onSelect(runAll),
+  ...checks.map(([title, run]) => new Button({text: title}).onSelect(() => runCheck(title, run)))
+);
+const output = new TextView({id: 'output', font: '12px monospace', text: 'Idle'}).appendTo(stack);
+
+async function runCheck(title, run) {
+  try {
+    show(title, await run());
+  } catch (error) {
+    show(`${title} rejected (${error.code})`, error.message);
+  }
+}
+
+async function runAll() {
+  lines.length = 0;
+  for (const [title, run] of checks) {
+    await runCheck(title, run);
+  }
+  show('all checks', 'done');
 }
 
 function show(title, value) {
@@ -36,3 +48,5 @@ function show(title, value) {
   lines.unshift(text);
   output.text = lines.join('\n\n');
 }
+
+runAll();

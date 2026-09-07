@@ -1,6 +1,6 @@
 import Foundation
 
-struct TabrisCall {
+struct NetworkDiagnosticsCall {
     let parameters: [String: Any]
     private let completion: JSFunctionValue
 
@@ -22,7 +22,7 @@ struct TabrisCall {
         completion.call(withParameters: [NSNull(), value ?? NSNull()])
     }
 
-    func reject(_ error: TabrisError) {
+    func reject(_ error: NetworkDiagnosticsError) {
         completion.call(withParameters: [error.tabrisObject])
     }
 }

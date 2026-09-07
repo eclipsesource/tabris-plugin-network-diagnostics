@@ -43,9 +43,16 @@ struct ProbeRunner: Sendable {
     let configuration: DiagnosticConfiguration
     let emit: EventSink
 
+    private var probes: HostProbes {
+        HostProbes(services: services, timeoutPerHostSeconds: configuration.timeoutPerHostSeconds)
+    }
+
     func run(gateways: [DiscoveredGateway], dnsServers: [InternetAddress]) async -> ProbeResults {
         var tracker = StageTracker(emit: emit)
         var indexed: [(index: Int, probe: Probe)] = []
+        let probes = self.probes
+        let packetCount = configuration.pingPacketCount
+        let httpMethod = configuration.httpMethod
 
         tracker.start(.gatewayPing, count: gateways.count)
         tracker.start(.dnsServerCheck, count: dnsServers.count)
@@ -59,10 +66,10 @@ struct ProbeRunner: Sendable {
                 group.addTask { .dnsServer(index: index, await checkDNSServer(server)) }
             }
             for (index, host) in configuration.pingHosts.enumerated() {
-                group.addTask { .ping(index: index, await pingHost(host)) }
+                group.addTask { .ping(index: index, await probes.pingHost(host, packetCount: packetCount)) }
             }
             for (index, url) in configuration.httpHosts.enumerated() {
-                group.addTask { .http(index: index, await probeHTTP(url)) }
+                group.addTask { .http(index: index, await probes.probeHTTP(url, method: httpMethod)) }
             }
             for await probe in group {
                 tracker.complete(probe.stage)
@@ -88,29 +95,23 @@ struct ProbeRunner: Sendable {
         GatewayInfo(
             address: gateway.address.description,
             interfaceName: gateway.interfaceName,
-            ping: await pingWithHardTimeout(gateway.address)
+            ping: await probes.pingWithHardTimeout(gateway.address, packetCount: configuration.pingPacketCount)
         )
     }
 
     private func checkDNSServer(_ server: InternetAddress) async -> DNSServerInfo {
-        async let ping = pingWithHardTimeout(server)
+        async let ping = probes.pingWithHardTimeout(server, packetCount: configuration.pingPacketCount)
         async let queries = queryDomains(on: server)
 
         return DNSServerInfo(address: server.description, ping: await ping, queries: await queries)
     }
 
     private func queryDomains(on server: InternetAddress) async -> [DNSQueryResult] {
-        await withTaskGroup(of: (index: Int, result: DNSQueryResult).self) { group in
-            for (index, domain) in configuration.dnsTestDomains.enumerated() {
-                group.addTask {
-                    let outcome = await services.dnsQuerier.query(
-                        domain: domain,
-                        server: server,
-                        timeoutSeconds: configuration.timeoutPerHostSeconds
-                    )
+        let probes = self.probes
 
-                    return (index, DNSQueryResult(domain: domain, outcome: outcome))
-                }
+        return await withTaskGroup(of: (index: Int, result: DNSQueryResult).self) { group in
+            for (index, domain) in configuration.dnsTestDomains.enumerated() {
+                group.addTask { (index, await probes.queryDNS(domain: domain, server: server)) }
             }
             var results: [(index: Int, result: DNSQueryResult)] = []
 
@@ -119,68 +120,6 @@ struct ProbeRunner: Sendable {
             }
             return results.sorted { $0.index < $1.index }.map(\.result)
         }
-    }
-
-    private func pingWithHardTimeout(_ address: InternetAddress) async -> PingOutcome {
-        let outcome = await withHardTimeout(seconds: configuration.timeoutPerHostSeconds) {
-            await ping(address)
-        }
-
-        return outcome ?? .failed(reason: hardTimeoutReason)
-    }
-
-    private func pingHost(_ host: String) async -> PingHostResult {
-        let result = await withHardTimeout(seconds: configuration.timeoutPerHostSeconds) {
-            await resolveAndPing(host)
-        }
-
-        return result ?? PingHostResult(host: host, resolvedAddress: nil, outcome: .failed(reason: hardTimeoutReason))
-    }
-
-    private func resolveAndPing(_ host: String) async -> PingHostResult {
-        do {
-            let addresses = try await services.hostResolver.resolve(host: host)
-
-            guard let address = addresses.first else {
-                return PingHostResult(
-                    host: host,
-                    resolvedAddress: nil,
-                    outcome: .resolutionFailed(reason: "no addresses")
-                )
-            }
-            return PingHostResult(host: host, resolvedAddress: address.description, outcome: await ping(address))
-        } catch {
-            NetworkDiagnosticsLog.ping.error("Host resolution failed for \(host): \(error)")
-            return PingHostResult(
-                host: host,
-                resolvedAddress: nil,
-                outcome: .resolutionFailed(reason: String(describing: error))
-            )
-        }
-    }
-
-    private func ping(_ address: InternetAddress) async -> PingOutcome {
-        await services.pinger.ping(
-            address: address,
-            packetCount: configuration.pingPacketCount,
-            timeoutPerPacketSeconds: configuration.timeoutPerHostSeconds / Double(max(configuration.pingPacketCount, 1))
-        )
-    }
-
-    private func probeHTTP(_ url: URL) async -> HttpHostResult {
-        let outcome = await withHardTimeout(seconds: configuration.timeoutPerHostSeconds) {
-            await services.httpProber.probe(
-                url: url,
-                method: configuration.httpMethod,
-                timeoutSeconds: configuration.timeoutPerHostSeconds
-            )
-        }
-
-        return HttpHostResult(url: url, outcome: outcome ?? .failure(.timedOut))
-    }
-
-    private var hardTimeoutReason: String {
-        "no result within the \(configuration.timeoutPerHostSeconds)s hard timeout"
     }
 }
 

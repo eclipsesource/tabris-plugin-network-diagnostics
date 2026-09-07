@@ -19,7 +19,7 @@
 | run | One execution of the all-in-one diagnosis started by `diagnose()`; at most one per plugin object at a time | session, job |
 | primitive | One diagnostic building block exposed to JavaScript on its own (`interfaces`, `gateways`, `dnsServers`, `ping`, `dnsQuery`, `http`), implemented by `DiagnosticPrimitives` | helper, utility |
 | contract | The JavaScript API in `www/` together with the JSON shapes it returns and the events it emits; changed only as a coordinated migration | interface (reserved for network interfaces), schema |
-| Tabris object | The `[String: Any]` form of a model value that crosses the bridge to JavaScript (`TabrisRepresentable.tabrisObject`); discriminated by a `state` key where the Swift type is an enum | dictionary, payload, JSON (the shape, not the encoding) |
+| Tabris object | The `[String: Any]` form of a model value that crosses the bridge to JavaScript (`NetworkDiagnosticsRepresentable.tabrisObject`); discriminated by a `state` key where the Swift type is an enum | dictionary, payload, JSON (the shape, not the encoding) |
 | listener flag | The `@objc` boolean `<event>Listener` that Tabris sets when JavaScript subscribes to a native event | subscription |
 
 ## Unit suffix convention

@@ -10,7 +10,16 @@
 
   <engines>
     <engine name="cordova" version=">=3.8.0" />
+    <engine name="cordova-ios" version=">=6.2.0" />
   </engines>
+
+  <!-- Shown by iOS the first time the app touches the local network (gateway
+       ping, DNS server query). Override per app:
+       <plugin name="tabris-plugin-network-diagnostics" spec="...">
+         <variable name="LOCAL_NETWORK_USAGE_DESCRIPTION" value="..." />
+       </plugin> -->
+  <preference name="LOCAL_NETWORK_USAGE_DESCRIPTION"
+              default="Pings the router and queries the DNS servers on the local network to diagnose connectivity." />
 
   <js-module src="www/NetworkDiagnostics.js" name="NetworkDiagnostics">
     <clobbers target="es.NetworkDiagnostics" />
@@ -35,18 +44,20 @@
     </config-file>
 
     <config-file target="*-Info.plist" parent="NSLocalNetworkUsageDescription">
-      <string>Pings the router and queries the DNS servers on the local network to diagnose connectivity.</string>
+      <string>$LOCAL_NETWORK_USAGE_DESCRIPTION</string>
     </config-file>
 
     <header-file src="src/ios/NetworkDiagnostics-BridgingHeader.h" type="BridgingHeader" />
     <source-file src="src/ios/NetworkDiagnosticsPlugin.swift" />
-    <source-file src="src/ios/TabrisCall.swift" />
+    <source-file src="src/ios/NetworkDiagnosticsCall.swift" />
 
     <source-file src="Sources/CResolv/CResolv.c" />
     <header-file src="Sources/CResolv/include/CResolv.h" />
     <source-file src="Sources/NetworkDiagnostics/Bridge/Discovery+Tabris.swift" />
-    <source-file src="Sources/NetworkDiagnostics/Bridge/TabrisError.swift" />
-    <source-file src="Sources/NetworkDiagnostics/Bridge/TabrisRepresentable.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/Outcomes+Tabris.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/NetworkDiagnosticsError.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/NetworkDiagnosticsParameters.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/NetworkDiagnosticsRepresentable.swift" />
     <source-file src="Sources/NetworkDiagnostics/Configuration/DiagnosticConfiguration.swift" />
     <source-file src="Sources/NetworkDiagnostics/Core/DNSMessage.swift" />
     <source-file src="Sources/NetworkDiagnostics/Core/DNSServerParser.swift" />
@@ -58,6 +69,7 @@
     <source-file src="Sources/NetworkDiagnostics/Core/SummaryBuilder.swift" />
     <source-file src="Sources/NetworkDiagnostics/Core/Timeout.swift" />
     <source-file src="Sources/NetworkDiagnostics/DiagnosticPrimitives.swift" />
+    <source-file src="Sources/NetworkDiagnostics/HostProbes.swift" />
     <source-file src="Sources/NetworkDiagnostics/Model/DiagnosticEvent.swift" />
     <source-file src="Sources/NetworkDiagnostics/Model/DiagnosticReport.swift" />
     <source-file src="Sources/NetworkDiagnostics/Model/DiagnosticSummary.swift" />

@@ -43,7 +43,7 @@ final class PluginManifestTests: XCTestCase {
             in: manifest
         )
         let declared = matches(
-            #"@objc\((\w+)\)\s*\n\s*public class NetworkDiagnosticsPlugin"#,
+            #"@objc\s*\(\s*(\w+)\s*\)\s*(?:public\s+|final\s+|open\s+)*class\s+NetworkDiagnosticsPlugin\b"#,
             in: try read("src/ios/NetworkDiagnosticsPlugin.swift")
         )
 
