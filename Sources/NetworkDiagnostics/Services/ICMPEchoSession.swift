@@ -99,7 +99,7 @@ final class ICMPEchoSession: @unchecked Sendable {
               reply.sequence == sequence,
               let sentAt
         else { return }
-        rttSamplesMs.append((ContinuousClock.now - sentAt).milliseconds)
+        rttSamplesMs.append((ContinuousClock.now - sentAt).networkDiagnosticsMilliseconds)
         advance()
     }
 

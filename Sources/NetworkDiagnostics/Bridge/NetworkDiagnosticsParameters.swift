@@ -63,9 +63,33 @@ enum NetworkDiagnosticsParameters {
         Gateway(timeoutSeconds: try timeout(parameters, key: "timeoutSeconds"))
     }
 
+    static func diagnosticConfiguration(_ parameters: [String: Any]) throws -> DiagnosticConfiguration {
+        DiagnosticConfiguration(
+            pingHosts: try textList(parameters, key: "pingHosts"),
+            httpHosts: try textList(parameters, key: "httpHosts").map { try url($0, key: "httpHosts") },
+            dnsTestDomains: try textList(parameters, key: "dnsTestDomains"),
+            timeoutPerHostSeconds: try timeout(parameters, key: "timeoutPerHostSeconds"),
+            pingPacketCount: try packetCount(parameters, key: "pingPacketCount"),
+            httpMethod: try method(parameters, key: "httpMethod")
+        )
+    }
+
+    static func textList(_ parameters: [String: Any], key: String) throws -> [String] {
+        guard let value = parameters[key] else { return [] }
+        guard let items = value as? [String] else {
+            throw NetworkDiagnosticsParameterError("\(key) must be an array of strings, received \(describe(value))")
+        }
+        let trimmed = items.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+        guard !trimmed.contains(where: \.isEmpty) else {
+            throw NetworkDiagnosticsParameterError("\(key) must not contain empty strings, received \(items)")
+        }
+        return trimmed
+    }
+
     static func timeout(_ parameters: [String: Any], key: String) throws -> TimeInterval {
         guard let value = parameters[key] else { return defaultTimeoutSeconds }
-        guard let seconds = value as? Double ?? (value as? Int).map(Double.init), seconds > 0, seconds.isFinite else {
+        guard let seconds = number(value), seconds > 0, seconds.isFinite else {
             throw NetworkDiagnosticsParameterError(
                 "\(key) must be a number of seconds greater than 0, received \(describe(value))"
             )
@@ -75,7 +99,7 @@ enum NetworkDiagnosticsParameters {
 
     static func packetCount(_ parameters: [String: Any], key: String) throws -> Int {
         guard let value = parameters[key] else { return defaultPacketCount }
-        guard let count = value as? Int ?? integral(value as? Double), count >= 1 else {
+        guard let count = integral(number(value)), count >= 1 else {
             throw NetworkDiagnosticsParameterError(
                 "\(key) must be an integer of at least 1, received \(describe(value))"
             )
@@ -83,19 +107,24 @@ enum NetworkDiagnosticsParameters {
         return count
     }
 
+    static func number(_ value: Any) -> Double? {
+        guard CFGetTypeID(value as AnyObject) != CFBooleanGetTypeID() else { return nil }
+        return value as? Double ?? (value as? Int).map(Double.init)
+    }
+
     static func integral(_ value: Double?) -> Int? {
         guard let value, value.isFinite, value == value.rounded() else { return nil }
-        return Int(value)
+        return Int(exactly: value)
     }
 
     static func requiredText(_ parameters: [String: Any], key: String) throws -> String {
         guard let value = parameters[key] else {
             throw NetworkDiagnosticsParameterError("\(key) is required")
         }
-        guard let text = value as? String, !text.trimmingCharacters(in: .whitespaces).isEmpty else {
+        guard let text = value as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw NetworkDiagnosticsParameterError("\(key) must be a non-empty string, received \(describe(value))")
         }
-        return text.trimmingCharacters(in: .whitespaces)
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func address(_ parameters: [String: Any], key: String) throws -> InternetAddress {

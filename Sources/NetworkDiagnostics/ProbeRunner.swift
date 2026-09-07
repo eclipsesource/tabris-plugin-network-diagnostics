@@ -1,13 +1,39 @@
 import Foundation
 
-struct ProbeResults {
-    var gateways: [GatewayInfo] = []
-    var dnsServers: [DNSServerInfo] = []
-    var pings: [PingHostResult] = []
-    var https: [HttpHostResult] = []
-}
-
 struct ProbeRunner: Sendable {
+    struct Results {
+        var gateways: [GatewayInfo] = []
+        var dnsServers: [DNSServerInfo] = []
+        var pings: [PingHostResult] = []
+        var https: [HttpHostResult] = []
+    }
+
+    private struct StageTracker {
+        private let emit: EventSink
+        private var remaining: [DiagnosticStage: Int] = [:]
+
+        init(emit: @escaping EventSink) {
+            self.emit = emit
+        }
+
+        mutating func start(_ stage: DiagnosticStage, count: Int) {
+            emit(.stageStarted(stage))
+            remaining[stage] = count
+            if count == 0 {
+                emit(.stageFinished(stage))
+            }
+        }
+
+        mutating func complete(_ stage: DiagnosticStage) {
+            let left = (remaining[stage] ?? 0) - 1
+
+            remaining[stage] = left
+            if left == 0 {
+                emit(.stageFinished(stage))
+            }
+        }
+    }
+
     private enum Probe: Sendable {
         case gateway(index: Int, GatewayInfo)
         case dnsServer(index: Int, DNSServerInfo)
@@ -47,7 +73,7 @@ struct ProbeRunner: Sendable {
         HostProbes(services: services, timeoutPerHostSeconds: configuration.timeoutPerHostSeconds)
     }
 
-    func run(gateways: [DiscoveredGateway], dnsServers: [InternetAddress]) async -> ProbeResults {
+    func run(gateways: [DiscoveredGateway], dnsServers: [InternetAddress]) async -> Results {
         var tracker = StageTracker(emit: emit)
         var indexed: [(index: Int, probe: Probe)] = []
         let probes = self.probes
@@ -80,8 +106,8 @@ struct ProbeRunner: Sendable {
         return Self.collect(indexed.sorted { $0.index < $1.index }.map(\.probe))
     }
 
-    private static func collect(_ probes: [Probe]) -> ProbeResults {
-        probes.reduce(into: ProbeResults()) { results, probe in
+    private static func collect(_ probes: [Probe]) -> Results {
+        probes.reduce(into: Results()) { results, probe in
             switch probe {
             case let .gateway(_, info): results.gateways.append(info)
             case let .dnsServer(_, info): results.dnsServers.append(info)
@@ -119,32 +145,6 @@ struct ProbeRunner: Sendable {
                 results.append(result)
             }
             return results.sorted { $0.index < $1.index }.map(\.result)
-        }
-    }
-}
-
-struct StageTracker {
-    private let emit: EventSink
-    private var remaining: [DiagnosticStage: Int] = [:]
-
-    init(emit: @escaping EventSink) {
-        self.emit = emit
-    }
-
-    mutating func start(_ stage: DiagnosticStage, count: Int) {
-        emit(.stageStarted(stage))
-        remaining[stage] = count
-        if count == 0 {
-            emit(.stageFinished(stage))
-        }
-    }
-
-    mutating func complete(_ stage: DiagnosticStage) {
-        let left = (remaining[stage] ?? 0) - 1
-
-        remaining[stage] = left
-        if left == 0 {
-            emit(.stageFinished(stage))
         }
     }
 }

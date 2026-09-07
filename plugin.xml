@@ -53,8 +53,10 @@
 
     <source-file src="Sources/CResolv/CResolv.c" />
     <header-file src="Sources/CResolv/include/CResolv.h" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/DiagnosticEvent+Tabris.swift" />
     <source-file src="Sources/NetworkDiagnostics/Bridge/Discovery+Tabris.swift" />
     <source-file src="Sources/NetworkDiagnostics/Bridge/Outcomes+Tabris.swift" />
+    <source-file src="Sources/NetworkDiagnostics/Bridge/Report+Tabris.swift" />
     <source-file src="Sources/NetworkDiagnostics/Bridge/NetworkDiagnosticsError.swift" />
     <source-file src="Sources/NetworkDiagnostics/Bridge/NetworkDiagnosticsParameters.swift" />
     <source-file src="Sources/NetworkDiagnostics/Bridge/NetworkDiagnosticsRepresentable.swift" />

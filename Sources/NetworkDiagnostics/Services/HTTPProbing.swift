@@ -22,7 +22,7 @@ struct URLSessionHTTPProber: HTTPProbing {
         request.httpMethod = method.rawValue
         do {
             let (_, response) = try await session.data(for: request)
-            let latencyMs = (ContinuousClock.now - startedAt).milliseconds
+            let latencyMs = (ContinuousClock.now - startedAt).networkDiagnosticsMilliseconds
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 NetworkDiagnosticsLog.http.error("URLSessionHTTPProber.probe(\(url)) received a non-HTTP response")

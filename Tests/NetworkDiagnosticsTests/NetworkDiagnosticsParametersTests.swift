@@ -31,18 +31,29 @@ final class NetworkDiagnosticsParametersTests: XCTestCase {
         assertInvalid(try NetworkDiagnosticsParameters.ping(["host": 42]), mentioning: "host")
     }
 
-    func testPacketCountRejectsZeroFractionsAndStrings() {
+    func testPacketCountRejectsZeroFractionsStringsHugeNumbersAndBooleans() {
         assertInvalid(try NetworkDiagnosticsParameters.packetCount(["p": 0], key: "p"), mentioning: "p")
         assertInvalid(try NetworkDiagnosticsParameters.packetCount(["p": 2.5], key: "p"), mentioning: "p")
         assertInvalid(try NetworkDiagnosticsParameters.packetCount(["p": "3"], key: "p"), mentioning: "3")
         assertInvalid(try NetworkDiagnosticsParameters.packetCount(["p": -1], key: "p"), mentioning: "p")
+        assertInvalid(try NetworkDiagnosticsParameters.packetCount(["p": 1e100], key: "p"), mentioning: "p")
+        assertInvalid(try NetworkDiagnosticsParameters.packetCount(["p": true], key: "p"), mentioning: "p")
     }
 
-    func testTimeoutRejectsNonPositiveNonFiniteAndNonNumericValues() {
+    func testTimeoutRejectsNonPositiveNonFiniteNonNumericAndBooleanValues() {
         assertInvalid(try NetworkDiagnosticsParameters.timeout(["t": 0], key: "t"), mentioning: "t")
         assertInvalid(try NetworkDiagnosticsParameters.timeout(["t": -1], key: "t"), mentioning: "t")
         assertInvalid(try NetworkDiagnosticsParameters.timeout(["t": Double.infinity], key: "t"), mentioning: "t")
         assertInvalid(try NetworkDiagnosticsParameters.timeout(["t": "fast"], key: "t"), mentioning: "fast")
+        assertInvalid(try NetworkDiagnosticsParameters.timeout(["t": true], key: "t"), mentioning: "t")
+    }
+
+    func testTextIsTrimmedOfNewlinesAndMustNotBeBlank() throws {
+        XCTAssertEqual(
+            try NetworkDiagnosticsParameters.requiredText(["host": "example.test\n"], key: "host"),
+            "example.test"
+        )
+        assertInvalid(try NetworkDiagnosticsParameters.requiredText(["host": "\n"], key: "host"), mentioning: "host")
     }
 
     func testDNSQueryRequestParsesIPv4AndIPv6Servers() throws {
@@ -93,6 +104,52 @@ final class NetworkDiagnosticsParametersTests: XCTestCase {
         let put: [String: Any] = ["url": "https://www.apple.com", "method": "PUT"]
 
         assertInvalid(try NetworkDiagnosticsParameters.http(put), mentioning: "PUT")
+    }
+
+    func testDiagnosticConfigurationDefaultsToEmptyListsAndLibraryDefaults() throws {
+        let configuration = try NetworkDiagnosticsParameters.diagnosticConfiguration([:])
+
+        XCTAssertEqual(configuration.pingHosts, [])
+        XCTAssertEqual(configuration.httpHosts, [])
+        XCTAssertEqual(configuration.dnsTestDomains, [])
+        XCTAssertEqual(configuration.timeoutPerHostSeconds, 3)
+        XCTAssertEqual(configuration.pingPacketCount, 3)
+        XCTAssertEqual(configuration.httpMethod, .head)
+    }
+
+    func testDiagnosticConfigurationReadsEveryField() throws {
+        let configuration = try NetworkDiagnosticsParameters.diagnosticConfiguration([
+            "pingHosts": ["1.1.1.1", " 8.8.8.8 "],
+            "httpHosts": ["https://www.apple.com", "http://127.0.0.1:8080/health"],
+            "dnsTestDomains": ["apple.com"],
+            "timeoutPerHostSeconds": 5,
+            "pingPacketCount": 4,
+            "httpMethod": "get",
+        ])
+
+        XCTAssertEqual(configuration.pingHosts, ["1.1.1.1", "8.8.8.8"])
+        XCTAssertEqual(
+            configuration.httpHosts.map(\.absoluteString),
+            ["https://www.apple.com", "http://127.0.0.1:8080/health"]
+        )
+        XCTAssertEqual(configuration.dnsTestDomains, ["apple.com"])
+        XCTAssertEqual(configuration.timeoutPerHostSeconds, 5)
+        XCTAssertEqual(configuration.pingPacketCount, 4)
+        XCTAssertEqual(configuration.httpMethod, .get)
+    }
+
+    func testDiagnosticConfigurationRejectsBadLists() {
+        let notAList: [String: Any] = ["pingHosts": "1.1.1.1"]
+        let emptyEntry: [String: Any] = ["dnsTestDomains": ["apple.com", " "]]
+        let badURL: [String: Any] = ["httpHosts": ["https://www.apple.com", "ftp://files.test/"]]
+        let numbers: [String: Any] = ["pingHosts": [1, 2]]
+
+        let configure = NetworkDiagnosticsParameters.diagnosticConfiguration
+
+        assertInvalid(try configure(notAList), mentioning: "pingHosts")
+        assertInvalid(try configure(emptyEntry), mentioning: "dnsTestDomains")
+        assertInvalid(try configure(badURL), mentioning: "ftp://files.test/")
+        assertInvalid(try configure(numbers), mentioning: "pingHosts")
     }
 
     func testGatewayRequestUsesTheDefaultTimeout() throws {

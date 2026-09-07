@@ -7,9 +7,19 @@ public class NetworkDiagnosticsPlugin: BasicObject {
         let call: NetworkDiagnosticsCall
     }
 
+    private let diagnostics = NetworkDiagnostics()
     private let primitives = DiagnosticPrimitives()
     private var pendingCalls: [UUID: PendingCall] = [:]
     private var generation = 0
+    private var run: PendingCall?
+    private var runGeneration = 0
+
+    @objc public var stageStartedListener = false
+    @objc public var stageFinishedListener = false
+    @objc public var gatewayResultListener = false
+    @objc public var dnsServerResultListener = false
+    @objc public var pingResultListener = false
+    @objc public var httpResultListener = false
 
     // swiftlint:disable:next implicitly_unwrapped_optional
     override public class func remoteObjectType() -> String! {
@@ -25,10 +35,13 @@ public class NetworkDiagnosticsPlugin: BasicObject {
         register(#selector(ping(properties:)), forCall: "ping")
         register(#selector(dnsQuery(properties:)), forCall: "dnsQuery")
         register(#selector(http(properties:)), forCall: "http")
+        register(#selector(diagnose(properties:)), forCall: "diagnose")
+        register(#selector(cancel(properties:)), forCall: "cancel")
     }
 
     deinit {
         pendingCalls.values.forEach { $0.task.cancel() }
+        run?.task.cancel()
     }
 
     @objc(interfaces:)
@@ -111,19 +124,109 @@ public class NetworkDiagnosticsPlugin: BasicObject {
         }
     }
 
+    @objc(diagnose:)
+    public func diagnose(properties: [String: Any]) {
+        guard let call = NetworkDiagnosticsCall(properties: properties, console: context.console),
+              let configuration = request(
+                { try NetworkDiagnosticsParameters.diagnosticConfiguration(call.parameters) },
+                for: call
+              ) else {
+            return
+        }
+        guard run == nil else {
+            call.reject(
+                NetworkDiagnosticsError(
+                    code: .alreadyRunning,
+                    message: "a diagnosis is already running on this object; call cancel() or wait for it to settle"
+                )
+            )
+            return
+        }
+        runGeneration += 1
+        let generation = runGeneration
+        let diagnostics = self.diagnostics
+        let task = Task {
+            var report: DiagnosticReport?
+
+            for await event in diagnostics.diagnose(configuration) {
+                if case let .completed(completed) = event {
+                    report = completed
+                }
+                await MainActor.run { [weak self] in
+                    self?.handle(event, generation: generation)
+                }
+            }
+            await MainActor.run { [weak self] in
+                self?.finishRun(report: report, generation: generation)
+            }
+        }
+
+        run = PendingCall(task: task, call: call)
+    }
+
+    @objc(cancel:)
+    public func cancel(properties: [String: Any]) {
+        guard let call = NetworkDiagnosticsCall(properties: properties, console: context.console) else { return }
+
+        cancelRun(rejectingWith: NetworkDiagnosticsError(code: .cancelled, message: "cancelled"))
+        call.resolve(nil)
+    }
+
     override public func destroy() {
-        generation += 1
+        let disposed = NetworkDiagnosticsError(code: .disposed, message: "NetworkDiagnostics object was disposed")
         let calls = pendingCalls
 
+        generation += 1
         pendingCalls.removeAll()
+        cancelRun(rejectingWith: disposed)
         for pending in calls.values {
             pending.task.cancel()
-            pending.call.reject(
-                NetworkDiagnosticsError(code: .disposed, message: "NetworkDiagnostics object was disposed")
-            )
+            pending.call.reject(disposed)
         }
         logDebug("destroyed, \(calls.count) pending call(s) rejected")
         super.destroy()
+    }
+
+    private func cancelRun(rejectingWith error: NetworkDiagnosticsError) {
+        guard let run else { return }
+
+        runGeneration += 1
+        self.run = nil
+        run.task.cancel()
+        run.call.reject(error)
+        logDebug("run \(error.code.rawValue)")
+    }
+
+    private func handle(_ event: DiagnosticEvent, generation: Int) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard runGeneration == generation, !isDisposed, let tabrisEvent = event.tabrisEvent else { return }
+        guard isListening(to: tabrisEvent.name) else { return }
+
+        fireEventNamed(tabrisEvent.name, withAttributes: tabrisEvent.attributes)
+    }
+
+    private func finishRun(report: DiagnosticReport?, generation: Int) {
+        dispatchPrecondition(condition: .onQueue(.main))
+        guard runGeneration == generation, !isDisposed, let run else { return }
+
+        self.run = nil
+        if let report {
+            run.call.resolve(report.tabrisObject)
+        } else {
+            run.call.reject(NetworkDiagnosticsError(code: .cancelled, message: "the run ended without a report"))
+        }
+    }
+
+    private func isListening(to eventName: String) -> Bool {
+        switch eventName {
+        case "stageStarted": stageStartedListener
+        case "stageFinished": stageFinishedListener
+        case "gatewayResult": gatewayResultListener
+        case "dnsServerResult": dnsServerResultListener
+        case "pingResult": pingResultListener
+        case "httpResult": httpResultListener
+        default: false
+        }
     }
 
     private func request<Request>(

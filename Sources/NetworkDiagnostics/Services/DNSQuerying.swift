@@ -66,7 +66,7 @@ struct UDPDNSQuerier: DNSQuerying {
         identifier: UInt16,
         startedAt: ContinuousClock.Instant
     ) -> DNSQueryOutcome {
-        let latencyMs = (ContinuousClock.now - startedAt).milliseconds
+        let latencyMs = (ContinuousClock.now - startedAt).networkDiagnosticsMilliseconds
 
         if let error {
             return .failed(reason: "receive failed: \(error)")

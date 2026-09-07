@@ -44,7 +44,7 @@ public struct NetworkDiagnostics: Sendable {
         let dnsDiscovery = discoveredDNSServers.discovery(checked: probes.dnsServers)
         let report = DiagnosticReport(
             startedAt: startedAt,
-            durationSeconds: (ContinuousClock.now - startedInstant).milliseconds / 1_000,
+            durationSeconds: (ContinuousClock.now - startedInstant).networkDiagnosticsMilliseconds / 1_000,
             interfaces: discoveredInterfaces,
             gateways: gatewayDiscovery,
             dnsServers: dnsDiscovery,
