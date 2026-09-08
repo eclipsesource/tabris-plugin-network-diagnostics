@@ -3,6 +3,6 @@
   "description": "Example for the Tabris.js Network Diagnostics plugin.",
   "main": "src/app.js",
   "dependencies": {
-    "tabris": "3.10.0"
+    "tabris": "3.11.0-dev.20260908"
   }
 }
