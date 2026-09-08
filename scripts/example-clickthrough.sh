@@ -184,7 +184,7 @@ check "run rejected with code cancelled" 'diagnose rejected \(cancelled\)'
 echo "== 3. dispose the object during a run"
 tap_button "Run diagnostics"
 wait_until_button_enabled "Cancel" 10 || echo "FAIL: Cancel never became enabled (run 3)"
-tap_and_await_settlement "Recreate object" 'diagnose rejected \(disposed\)' 15 \
+tap_and_await_settlement "Dispose and recreate" 'diagnose rejected \(disposed\)' 15 \
     || echo "FAIL: dispose did not reject the promise"
 capture disposed
 check "run rejected with code disposed" 'diagnose rejected \(disposed\)'

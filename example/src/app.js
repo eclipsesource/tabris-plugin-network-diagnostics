@@ -33,7 +33,7 @@ stack.append(
   new TextInput({id: 'packets', keyboard: 'number', message: 'Ping packets', text: '3', layoutData: 'stretchX'}),
   new Button({id: 'run', text: 'Run diagnostics', layoutData: 'stretchX'}).onSelect(run),
   new Button({id: 'cancel', text: 'Cancel', enabled: false, layoutData: 'stretchX'}).onSelect(() => diagnostics.cancel()),
-  new Button({id: 'recreate', text: 'Recreate object', layoutData: 'stretchX'}).onSelect(recreate),
+  new Button({id: 'recreate', text: 'Dispose and recreate', layoutData: 'stretchX'}).onSelect(recreate),
   new Button({id: 'share', text: 'Share JSON', enabled: false, layoutData: 'stretchX'}).onSelect(share),
   new TextView({id: 'settlements', text: 'settlements: 0', font: '12px monospace', layoutData: 'stretchX'}),
   heading('Progress'),
