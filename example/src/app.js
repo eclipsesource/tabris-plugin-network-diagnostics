@@ -1,5 +1,15 @@
-const {Button, ScrollView, Stack, TextInput, TextView, app, contentView} = require('tabris');
+const {Button, Row, ScrollView, Stack, TextInput, TextView, app, contentView, device} = require('tabris');
 
+const TARGETS_STORAGE_KEY = 'networkDiagnostics.targets';
+const LABEL_COLUMN_WIDTH = 200;
+const SIDE_BY_SIDE_MIN_SCREEN_WIDTH = 600;
+const FIELDS = [
+  {id: 'pingHosts', label: 'Ping hosts', properties: {type: 'multiline', text: '1.1.1.1, 8.8.8.8'}},
+  {id: 'httpHosts', label: 'HTTP URLs', properties: {type: 'multiline', text: 'https://www.apple.com'}},
+  {id: 'dnsTestDomains', label: 'DNS test domains', properties: {type: 'multiline', text: 'apple.com'}},
+  {id: 'timeout', label: 'Timeout per host (s)', properties: {keyboard: 'number', text: '3'}},
+  {id: 'packets', label: 'Ping packets', properties: {keyboard: 'number', text: '3'}}
+];
 const STAGES = [
   ['interfaces', 'Interfaces'],
   ['gateways', 'Gateways'],
@@ -20,17 +30,15 @@ let diagnostics = createDiagnostics();
 let report = null;
 let settlements = 0;
 const sectionLines = {};
+const storedTargets = readStoredTargets();
+const labelBesideInput = device.screenWidth >= SIDE_BY_SIDE_MIN_SCREEN_WIDTH;
 
 const stack = new Stack({left: 16, top: 16, right: 16, spacing: 8})
   .appendTo(new ScrollView({layoutData: 'stretch'}).appendTo(contentView));
 
 stack.append(
   heading('Targets'),
-  new TextInput({id: 'pingHosts', type: 'multiline', message: 'Ping hosts', text: '1.1.1.1, 8.8.8.8', layoutData: 'stretchX'}),
-  new TextInput({id: 'httpHosts', type: 'multiline', message: 'HTTP URLs', text: 'https://www.apple.com', layoutData: 'stretchX'}),
-  new TextInput({id: 'dnsTestDomains', type: 'multiline', message: 'DNS test domains', text: 'apple.com', layoutData: 'stretchX'}),
-  new TextInput({id: 'timeout', keyboard: 'number', message: 'Timeout per host (s)', text: '3', layoutData: 'stretchX'}),
-  new TextInput({id: 'packets', keyboard: 'number', message: 'Ping packets', text: '3', layoutData: 'stretchX'}),
+  ...FIELDS.map(field),
   new Button({id: 'run', text: 'Run diagnostics', layoutData: 'stretchX'}).onSelect(run),
   new Button({id: 'cancel', text: 'Cancel', enabled: false, layoutData: 'stretchX'}).onSelect(() => diagnostics.cancel()),
   new Button({id: 'recreate', text: 'Dispose and recreate', layoutData: 'stretchX'}).onSelect(recreate),
@@ -155,6 +163,46 @@ function list(text) {
 
 function heading(text) {
   return new TextView({text, font: 'bold 16px', layoutData: 'stretchX'});
+}
+
+// A label beside each input on a tablet, above it on a phone. The placeholder
+// disappears as soon as a field holds a value, so a filled-in form would
+// otherwise give no clue which target is which.
+function field({id, label, properties}) {
+  const caption = new TextView({
+    text: label,
+    ...(labelBesideInput ? {width: LABEL_COLUMN_WIDTH} : {layoutData: 'stretchX'})
+  });
+  const input = new TextInput({
+    ...properties,
+    id,
+    text: storedTargets[id] ?? properties.text,
+    layoutData: 'stretchX'
+  }).onTextChanged(storeTargets);
+
+  return labelBesideInput
+    ? new Row({layoutData: 'stretchX', spacing: 8, alignment: 'centerY'}).append(caption, input)
+    : new Stack({layoutData: 'stretchX', spacing: 2}).append(caption, input);
+}
+
+// Targets outlive a restart, so testing against hosts on the device's own LAN
+// does not mean typing them in again every launch. `localStorage` is Tabris's
+// persistent key-value store; on iOS it lands in Documents/tabris.ClientStore.
+function readStoredTargets() {
+  try {
+    return JSON.parse(localStorage.getItem(TARGETS_STORAGE_KEY)) || {};
+  } catch (error) {
+    console.error(`stored targets are unreadable, falling back to the defaults: ${error.message}`);
+    return {};
+  }
+}
+
+function storeTargets() {
+  const targets = {};
+  for (const {id} of FIELDS) {
+    targets[id] = $(`#${id}`).first().text;
+  }
+  localStorage.setItem(TARGETS_STORAGE_KEY, JSON.stringify(targets));
 }
 
 function pingSummary(outcome) {

@@ -135,9 +135,19 @@ tap_and_await_settlement() {
 
 echo "== install and launch $BUNDLE_ID on $UDID"
 xcrun simctl bootstatus "$UDID" -b > /dev/null
+# The app persists its targets, so an earlier run's edits would leak into this
+# one. Uninstalling drops the app's storage and starts from the defaults.
+xcrun simctl uninstall "$UDID" "$BUNDLE_ID" > /dev/null 2>&1 || true
 xcrun simctl install "$UDID" "$APP_PATH"
 xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID"
-wait_for '^Run diagnostics$' 30 || { echo "FAIL: app did not show the Run button"; exit 1; }
+# Naming the app idb actually sees matters: its accessibility bridge sometimes
+# gets stuck on another process (DockFolderViewService has been observed) while
+# the app itself is up and on screen. Restarting the simulator device clears it;
+# restarting the idb companion does not.
+wait_for '^Run diagnostics$' 30 || {
+    echo "FAIL: app did not show the Run button; idb reports \"$(tree | jq -r '.[0].AXLabel')\" as the frontmost app"
+    exit 1
+}
 capture launched
 
 # The example prints every settlement to the Tabris developer console, which the
@@ -188,6 +198,19 @@ tap_and_await_settlement "Dispose and recreate" 'diagnose rejected \(disposed\)'
     || echo "FAIL: dispose did not reject the promise"
 capture disposed
 check "run rejected with code disposed" 'diagnose rejected \(disposed\)'
+
+# Asserted against the store on disk rather than by relaunching the app and
+# reading the field back: a relaunch after this much UI interaction reliably
+# wedges idb's accessibility bridge, and the store file settles the question
+# without it. Tabris keeps `localStorage` in Documents/tabris.ClientStore.
+echo "== 4. the targets typed in step 2 reached the persistent store"
+STORE="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)/Documents/tabris.ClientStore"
+if grep -q 'networkDiagnostics.targets' "$STORE" 2> /dev/null && grep -q '192\.0\.2\.1' "$STORE"; then
+    echo "PASS: the blackhole host typed in step 2 is in the persistent store"
+else
+    echo "FAIL: the blackhole host typed in step 2 is not in $STORE"
+    FAILURES=$((FAILURES + 1))
+fi
 
 echo "== result: $FAILURES failure(s); evidence in $LOG_DIR/example-step-*-$RUN_ID.*"
 [[ "$FAILURES" -eq 0 ]]

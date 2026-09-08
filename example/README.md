@@ -19,3 +19,10 @@ output line is `APP_PATH=<path to the built .app>`.
 
 Installs the app, launches it with the console attached and writes the console
 log and a screenshot to `/tmp/claude/`.
+
+## Targets are remembered
+
+The five target fields are written to `localStorage` on every change and read
+back at startup, so testing against hosts on your own LAN does not mean typing
+them in again. `../scripts/example-clickthrough.sh` uninstalls the app before it
+starts, so an earlier run's edits cannot leak into the next one.
