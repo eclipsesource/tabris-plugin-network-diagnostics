@@ -109,6 +109,38 @@ SMB2 and Diamond do **not** ship this hook — SMB2 compiles because CocoaPods w
 (`SwiftObject.swift`) is not listed in `plugin.xml` at all (it only exists in the standalone dev
 project).
 
+### Preferences instead of the hook (Tabris CLI 3.10, cordova-ios 6.2)
+
+The cordova-ios fork the Tabris CLI 3.10 ships reads two preferences from the *platform* `config.xml`
+on every prepare (`~/.tabris-cli/platforms/ios/<version>/bin/templates/scripts/cordova/lib/prepare.js`):
+`SwiftVersion` → `SWIFT_VERSION` and `deployment-target` → `IPHONEOS_DEPLOYMENT_TARGET`. Plugin
+`<config-file>` munges are applied before those are read, and the app's own `config.xml` merges on top,
+so a plugin can set both without a hook and the app still overrides:
+
+```xml
+<config-file target="config.xml" parent="/*">
+  <preference name="deployment-target" value="16.0" />
+  <preference name="SwiftVersion" value="5.0" />
+</config-file>
+```
+
+This is what `tabris-plugin-network-diagnostics` does; verified by reading the resolved values with
+`xcodebuild -showBuildSettings` on the generated project, not just grepping `project.pbxproj`. The
+`add-swift-support.js` hook remains the fallback if a future fork stops honouring the preferences.
+
+### Two more integration facts that bite
+
+- **Unique bridging-header basename.** Cordova flattens every plugin file to
+  `Plugins/<plugin-id>/<basename>` and merges each `type="BridgingHeader"` header into one
+  `Bridging-Header.h` by basename (`Api.js`). Every existing plugin ships `Tabris-BridgingHeader.h`;
+  two of them in one app collide. Name yours after the plugin (e.g. `NetworkDiagnostics-BridgingHeader.h`).
+  Basename collisions apply to source files too — keep them unique.
+- **System `.tbd` libraries link cleanly.** `<framework src="libresolv.tbd" />` is enough to link
+  `libresolv` (the `xcode` npm module maps `.tbd` to `usr/lib`, `SDKROOT`); no `OTHER_LDFLAGS` needed.
+- **Flat Swift namespace.** All plugin Swift compiles into the app module. A generic top-level name
+  (`Log`, `Duration.milliseconds`, `TabrisError`) can clash with another plugin — prefix collision-prone
+  names with the plugin's own (`NetworkDiagnosticsLog`).
+
 ## Consuming the plugin from an app
 
 ```xml

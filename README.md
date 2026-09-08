@@ -1,0 +1,157 @@
+# tabris-plugin-network-diagnostics
+
+Network diagnostics for Tabris.js apps on iOS: interfaces, gateways, DNS servers,
+ICMP ping, direct DNS queries, HTTP probes, and an all-in-one diagnosis with a
+verdict. Swift port of `ios-network-diagnostics`.
+
+## Install
+
+```xml
+<!-- config.xml -->
+<plugin name="tabris-plugin-network-diagnostics" spec="<git url or local path of this repository>" />
+```
+
+## Quick start
+
+```js
+const diagnostics = new es.NetworkDiagnostics();
+
+diagnostics.on('pingResult', ({host, outcome}) => console.log(host, outcome.state));
+
+const report = await diagnostics.diagnose({
+  pingHosts: ['1.1.1.1', '8.8.8.8'],
+  httpHosts: ['https://www.apple.com'],
+  dnsTestDomains: ['apple.com'],
+  timeoutPerHostSeconds: 3, // default
+  pingPacketCount: 3,       // default
+  httpMethod: 'HEAD'        // default, or 'GET'
+});
+
+console.log(report.summary.verdict, report.summary.message);
+```
+
+## Primitives
+
+```js
+await diagnostics.interfaces();                                    // NetworkInterface[]
+await diagnostics.gateways({timeoutSeconds: 3});                   // Gateway[] (discovery only, no ping)
+await diagnostics.dnsServers();                                    // ['192.168.0.1', 'fd00::1']
+await diagnostics.ping('1.1.1.1', {packetCount: 3, timeoutSeconds: 3});          // PingResult
+await diagnostics.dnsQuery('apple.com', {server: '192.168.0.1', timeoutSeconds: 3}); // DnsQueryResult
+await diagnostics.http('https://www.apple.com', {method: 'HEAD', timeoutSeconds: 3}); // HttpResult
+```
+
+`dnsQuery` needs an explicit `server`; compose it: `const [server] = await diagnostics.dnsServers();`
+
+## Events (fired while `diagnose()` runs)
+
+```js
+diagnostics.on('stageStarted',    ({stage}) => {});                       // see stages below
+diagnostics.on('stageFinished',   ({stage}) => {});
+diagnostics.on('gatewayResult',   ({address, interfaceName, ping}) => {});
+diagnostics.on('dnsServerResult', ({address, ping, queries}) => {});
+diagnostics.on('pingResult',      ({host, resolvedAddress, outcome}) => {});
+diagnostics.on('httpResult',      ({url, outcome}) => {});
+```
+
+Stages, in order: `interfaces`, `gateways`, `dnsServers` (parallel), then `gatewayPing`,
+`dnsServerCheck`, `hostPing`, `httpProbe` (parallel).
+
+## Cancel and dispose
+
+```js
+await diagnostics.cancel();   // the running diagnose() rejects with code 'cancelled'
+diagnostics.dispose();        // every pending call rejects with code 'disposed'
+```
+
+One `diagnose()` per object at a time; a second call rejects with `alreadyRunning`.
+Primitives run concurrently and are not affected by `cancel()`.
+
+## Errors
+
+```js
+try {
+  await diagnostics.ping('');
+} catch (error) {
+  error.code;    // 'invalidParameter'
+  error.message; // 'host must be a non-empty string, received ""'
+}
+```
+
+| `error.code` | When |
+|--------------|------|
+| `invalidParameter` | Malformed input; the message names the key and the received value |
+| `unavailable` | `interfaces()`, `gateways()`, `dnsServers()` when the system lookup fails |
+| `alreadyRunning` | `diagnose()` while a run is in flight on the same object |
+| `cancelled` | `cancel()` while `diagnose()` is running |
+| `disposed` | `dispose()` with calls in flight |
+
+Probe failures (`ping`, `dnsQuery`, `http`, and every item inside the report) are
+values in `outcome.state`, never rejections.
+
+## Result shapes
+
+| Shape | Fields |
+|-------|--------|
+| `NetworkInterface` | `name`, `ipv4Addresses: string[]`, `ipv6Addresses: string[]`, `isUp`, `isLoopback` |
+| `Gateway` | `address`, `interfaceName` (or `null`) |
+| `PingResult` | `host`, `resolvedAddress` (or `null`), `outcome: PingOutcome` |
+| `DnsQueryResult` | `domain`, `server`, `outcome: DnsQueryOutcome`, `isResolved` |
+| `HttpResult` | `url`, `outcome: HttpOutcome` |
+
+| Outcome | `state` | Extra fields |
+|---------|---------|--------------|
+| `PingOutcome` | `reachable` | `sentPackets`, `receivedPackets`, `minRttMs`, `avgRttMs`, `maxRttMs`, `packetLossPercent` |
+| | `unreachable` | `sentPackets` |
+| | `resolutionFailed` | `reason` |
+| | `failed` | `reason` |
+| `DnsQueryOutcome` | `answered` | `responseCode` (`noError`, `formatError`, `serverFailure`, `nameError`, `notImplemented`, `refused`, `other`), `rcode`, `addresses: string[]`, `latencyMs` |
+| | `timedOut` | |
+| | `failed` | `reason` |
+| `HttpOutcome` | `response` | `statusCode`, `latencyMs` |
+| | `failure` | `failure` (`dnsResolutionFailed`, `tlsHandshakeFailed`, `connectionRefused`, `timedOut`, `networkUnavailable`, `other`), `description` for `other` |
+
+`Report` (result of `diagnose()`):
+
+| Field | Shape |
+|-------|-------|
+| `startedAt` | ISO-8601 string with fractional seconds |
+| `durationSeconds` | number |
+| `interfaces` | `{state: 'found', items: NetworkInterface[]}` or `{state: 'unavailable', reason}` |
+| `gateways` | `{state: 'found', items: {address, interfaceName, ping: PingOutcome}[]}` or `{state: 'unavailable', reason}` |
+| `dnsServers` | `{state: 'found', items: {address, ping: PingOutcome, queries: {domain, outcome: DnsQueryOutcome, isResolved}[]}[]}` or `{state: 'unavailable', reason}` |
+| `pingResults` | `PingResult[]` |
+| `httpResults` | `HttpResult[]` |
+| `summary` | `{verdict, message, reason?}` — `verdict`: `healthy`, `noActiveInterface`, `gatewayUnreachable`, `dnsResolutionFailing`, `remoteHostsUnreachable`, `partialConnectivity`, `inconclusive` (with `reason`) |
+
+## Requirements
+
+- iOS 16 or later. The plugin injects the `deployment-target` (16.0) and `SwiftVersion` (5.0)
+  preferences into the generated project; an app's own preferences take precedence.
+- Tabris.js 3.10 with its cordova-ios 6.2 platform; no CocoaPods, no entitlements.
+- Local Network permission prompt on a device (not on the simulator) the first time a gateway or
+  DNS server on the LAN is contacted. Text via the plugin variable:
+  ```xml
+  <plugin name="tabris-plugin-network-diagnostics" spec="...">
+    <variable name="LOCAL_NETWORK_USAGE_DESCRIPTION" value="..." />
+  </plugin>
+  ```
+- Plain `http://` URLs need an App Transport Security exception in the app; the plugin adds none.
+
+## Example app
+
+```bash
+example/build.sh                                          # builds for the simulator; last line: APP_PATH=<.app>
+scripts/example-simulator.sh "<APP_PATH>" <simulator-udid> # installs, launches, screenshot + accessibility tree in /tmp/claude
+```
+
+## Development
+
+```bash
+swift test                          # unit + loopback integration tests on the macOS host
+scripts/run-simulator-tests.sh      # the same suites on a dedicated iOS Simulator
+swiftlint lint --strict
+```
+
+Decisions: `docs/decisions/`. Vocabulary: `docs/glossary.md`. Tabris.js plugin mechanics:
+`docs/knowledge/tabris-ios-plugins/`.

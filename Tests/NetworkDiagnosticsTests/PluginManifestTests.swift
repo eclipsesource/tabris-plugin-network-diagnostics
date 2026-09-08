@@ -73,6 +73,20 @@ final class PluginManifestTests: XCTestCase {
         XCTAssertEqual(registeredCalls.sorted(), javaScriptCalls.sorted())
     }
 
+    func testReadmeDocumentsEveryPublicJavaScriptMethod() throws {
+        let readme = try read("README.md")
+        let publicMethods = matches(#"\n  ([a-z]\w+)\("#, in: try read("www/NetworkDiagnostics.js"))
+            .filter { !$0.hasPrefix("_") }
+
+        XCTAssertFalse(publicMethods.isEmpty)
+        for method in publicMethods {
+            XCTAssertTrue(
+                readme.contains("diagnostics.\(method)("),
+                "README.md does not document diagnostics.\(method)()"
+            )
+        }
+    }
+
     private func read(_ relativePath: String) throws -> String {
         try String(contentsOf: repositoryRoot.appendingPathComponent(relativePath), encoding: .utf8)
     }

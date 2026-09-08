@@ -44,6 +44,15 @@ Two exceptions are raised rather than swallowed:
 `NSNull` is not special-cased in `withNativeObject:`; it falls through to `valueWithObject:`, and the
 reference plugins use it freely as an event attribute and as a "no error" callback argument.
 
+> **Build a payload from plain types only.** When you assemble a `[String: Any]` for a callback or an
+> event, put in only `String`, `NSNumber` (`Bool`/`Int`/`Double`), `NSNull`, arrays and dictionaries of
+> those. A Swift `Optional` is the common trap: `["interfaceName": name]` where `name` is `String?`
+> stores a `Swift.Optional<String>` wrapper, not a string or null — it reaches JS as an opaque object.
+> Map it explicitly (`name ?? NSNull()`). Likewise convert `URL` with `absoluteString`, `Date` with an
+> ISO-8601 formatter, `Data` only where you intend an `ArrayBuffer`, and every enum to a `String` before
+> it goes in. A one-line `XCTAssertTrue(JSONSerialization.isValidJSONObject(object))` in the encoding
+> test catches every leaked non-plain value.
+
 ## Type-safe dictionary getters
 
 Rather than casting by hand, use the framework category (`NSDictionary+TypeSafeGetters.h`), available

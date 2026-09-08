@@ -48,6 +48,28 @@ are all callback-based.
 returns `@1` to mean "accepted, started" and delivers the real outcome later through the
 `activationFinished` event.
 
+## Threading — deliver on the main thread
+
+`JSFunctionValue.callWithParameters:` and `fireEventNamed:withAttributes:` do **not** hop threads —
+they call straight into JavaScriptCore on whatever thread invokes them
+(`~/git/tabris-ios/Tabris/Tabris/Classes/JSFunctionValue.m`,
+`TabrisNotificationsDispatcher.m`). The main Tabris scope runs its JavaScript on `DispatchQueue.main`
+(`MainScope.swift`: `syncCodeDispatcher = CodeDispatcher(queue: .main, synchronous: true)`), and the
+bridge already calls your registered methods on the main thread. So a callback or event produced by
+`async`/`await` or any background queue must be delivered back on the main thread:
+
+```swift
+Task {
+    let result = try await work()
+    await MainActor.run { completion.call(withParameters: [NSNull(), result]) }
+}
+```
+
+Calling a `JSFunctionValue` off the main thread races the JavaScript engine and crashes intermittently.
+`dispatchPrecondition(condition: .onQueue(.main))` in the single delivery funnel catches a regression
+in debug builds. (`tabris-plugin-network-diagnostics` funnels every `resolve`/`reject`/`fire` through
+one `@MainActor` method for exactly this reason.)
+
 ## `JSFunctionValue` — callbacks
 
 A JS function inside the parameters dictionary is converted to a `JSFunctionValue`

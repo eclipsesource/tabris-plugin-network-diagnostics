@@ -79,8 +79,14 @@
 - Returning `Bool`/`Int`/`void` and expecting the value in JS — only object return types survive.
 - Calling an unregistered method name — no error, just `Call of '<name>' … Unhandled` in the log.
 - Not checking for the `completion` `JSFunctionValue` before use.
-- Firing a bridge call from a background queue. `fireEventNamed` and the `get`/`call` paths run
-  synchronously on the JS thread; hop to main first.
+- Firing a bridge call from a background queue. `fireEventNamed` and `JSFunctionValue.call` do not hop
+  threads — they call JavaScriptCore directly — and main-scope JS runs on `DispatchQueue.main`. Deliver
+  every `async` result and event from the main thread (`await MainActor.run { … }`); guard the delivery
+  funnel with `dispatchPrecondition(condition: .onQueue(.main))`. See `06_methods_and_callbacks.md`.
+- Putting a Swift `Optional`, `URL`, `Date`, `Data` or an enum into a `[String: Any]` you hand to a
+  callback or event. The bridge encodes only `String`, `NSNumber`, `NSNull`, arrays and dictionaries;
+  use `NSNull()` for absent values and pre-format URLs (`absoluteString`) and dates (ISO-8601 string).
+  Assert `JSONSerialization.isValidJSONObject(_:)` on every shape in a test.
 
 **Events**
 - Wrong flag name. It is derived mechanically: first character lowercased + `Listener`.
