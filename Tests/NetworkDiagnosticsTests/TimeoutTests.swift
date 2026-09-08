@@ -32,6 +32,25 @@ final class TimeoutTests: XCTestCase {
         XCTAssertNil(value)
     }
 
+    func testAnAlreadyCancelledCallerReturnsPromptly() async {
+        let clock = ContinuousClock()
+        let start = clock.now
+        // A budget short enough to bound a regression, long enough that a prompt
+        // return is unambiguous — a regression waits the whole 4 s, a pass < 2 s.
+        let waiting = Task<Int?, Never> {
+            try? await Task.sleep(for: .milliseconds(50))
+            return await withHardTimeout(seconds: 4) {
+                await withCheckedContinuation { (_: CheckedContinuation<Int, Never>) in }
+            }
+        }
+
+        waiting.cancel()
+        let value = await waiting.value
+
+        XCTAssertNil(value)
+        XCTAssertLessThan(clock.now - start, .seconds(2), "an already-cancelled caller must not wait for the budget")
+    }
+
     func testCancellationOfTheCallerEndsTheWaitPromptly() async {
         let clock = ContinuousClock()
         let start = clock.now

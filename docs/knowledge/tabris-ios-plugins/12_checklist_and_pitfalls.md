@@ -83,10 +83,12 @@
   threads — they call JavaScriptCore directly — and main-scope JS runs on `DispatchQueue.main`. Deliver
   every `async` result and event from the main thread (`await MainActor.run { … }`); guard the delivery
   funnel with `dispatchPrecondition(condition: .onQueue(.main))`. See `06_methods_and_callbacks.md`.
-- Putting a Swift `Optional`, `URL`, `Date`, `Data` or an enum into a `[String: Any]` you hand to a
-  callback or event. The bridge encodes only `String`, `NSNumber`, `NSNull`, arrays and dictionaries;
-  use `NSNull()` for absent values and pre-format URLs (`absoluteString`) and dates (ISO-8601 string).
-  Assert `JSONSerialization.isValidJSONObject(_:)` on every shape in a test.
+- Putting a Swift `Optional`, `URL`, `Date` or an enum into a JSON-shaped `[String: Any]` you hand to
+  a callback or event. Use `NSNull()` for absent values and pre-format URLs (`absoluteString`), dates
+  (ISO-8601 string) and enums (`String`). `Data` is different: the bridge does convert it to an
+  `ArrayBuffer` (see `08_data_types.md`), so it is valid when binary output is intentionally part of the
+  contract — it is just not valid JSON. Assert `JSONSerialization.isValidJSONObject(_:)` on every
+  JSON-shaped payload in a test.
 
 **Events**
 - Wrong flag name. It is derived mechanically: first character lowercased + `Listener`.

@@ -27,10 +27,16 @@ func withHardTimeout<Output: Sendable>(
             }
 
             tasks.withLock { $0 = TimeoutTasks(operation: operationTask, timeout: timeoutTask) }
+            if Task.isCancelled || settled.withLock({ $0 }) {
+                operationTask.cancel()
+                timeoutTask.cancel()
+            }
         }
     } onCancel: {
-        tasks.withLock { ($0.operation, $0.timeout) }.0?.cancel()
-        tasks.withLock { $0.timeout }?.cancel()
+        let current = tasks.withLock { $0 }
+
+        current.operation?.cancel()
+        current.timeout?.cancel()
     }
 }
 
