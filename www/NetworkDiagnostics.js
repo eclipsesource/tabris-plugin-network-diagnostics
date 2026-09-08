@@ -54,6 +54,7 @@ class NetworkDiagnostics extends tabris.NativeObject {
           } else {
             resolve(result === undefined ? null : result);
           }
+          flushAfterContinuations();
         }
       });
     });
@@ -69,6 +70,23 @@ tabris.NativeObject.defineEvents(NetworkDiagnostics.prototype, {
   pingResult: {native: true},
   httpResult: {native: true}
 });
+
+// Tabris buffers every JavaScript-to-native operation and ships the buffer only
+// on `tabris.flush()`. The event path flushes itself — `Tabris._notify` ends
+// with it — but a function parameter invoked through `JSFunctionValue` does not,
+// so everything a settled promise's continuation writes to a widget sits in the
+// buffer until some later native call or event, leaving the interface frozen on
+// a result that has already arrived.
+//
+// The timer matters. `resolve()` above only schedules the continuation as a
+// microtask, so flushing straight after it — here, or natively once
+// `callWithParameters:` returns — runs before the continuation and ships
+// nothing; that was measured on the simulator, not assumed. A timer callback is
+// a macrotask, so it runs after the microtask queue has drained, which is the
+// first moment every write the continuation makes is in the buffer.
+function flushAfterContinuations() {
+  setTimeout(() => tabris.flush(), 0);
+}
 
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
