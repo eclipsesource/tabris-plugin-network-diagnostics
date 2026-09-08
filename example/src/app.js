@@ -1,8 +1,8 @@
-const {Button, Row, ScrollView, Stack, TextInput, TextView, app, contentView, device} = require('tabris');
+const {Button, Composite, ScrollView, Stack, TextInput, TextView, app, contentView, device} = require('tabris');
 
 const TARGETS_STORAGE_KEY = 'networkDiagnostics.targets';
 const LABEL_COLUMN_WIDTH = 200;
-const SIDE_BY_SIDE_MIN_SCREEN_WIDTH = 600;
+const SIDE_BY_SIDE_MIN_WIDTH = 600;
 const FIELDS = [
   {id: 'pingHosts', label: 'Ping hosts', properties: {type: 'multiline', text: '1.1.1.1, 8.8.8.8'}},
   {id: 'httpHosts', label: 'HTTP URLs', properties: {type: 'multiline', text: 'https://www.apple.com'}},
@@ -31,7 +31,6 @@ let report = null;
 let settlements = 0;
 const sectionLines = {};
 const storedTargets = readStoredTargets();
-const labelBesideInput = device.screenWidth >= SIDE_BY_SIDE_MIN_SCREEN_WIDTH;
 
 const stack = new Stack({left: 16, top: 16, right: 16, spacing: 8})
   .appendTo(new ScrollView({layoutData: 'stretch'}).appendTo(contentView));
@@ -59,6 +58,11 @@ stack.append(
   heading('HTTP'),
   new TextView({id: 'http', text: '—', font: '12px monospace', layoutData: 'stretchX'})
 );
+
+contentView.onResize(({width}) => applyFieldLayout(width));
+// contentView has no width yet before the first layout pass, so the initial
+// choice comes from the screen.
+applyFieldLayout(device.screenWidth);
 
 function createDiagnostics() {
   const created = new es.NetworkDiagnostics();
@@ -165,24 +169,36 @@ function heading(text) {
   return new TextView({text, font: 'bold 16px', layoutData: 'stretchX'});
 }
 
-// A label beside each input on a tablet, above it on a phone. The placeholder
-// disappears as soon as a field holds a value, so a filled-in form would
-// otherwise give no clue which target is which.
+// Every target input carries a visible label: the placeholder disappears as
+// soon as a field holds a value, so a filled-in form would otherwise give no
+// clue which target is which.
 function field({id, label, properties}) {
-  const caption = new TextView({
-    text: label,
-    ...(labelBesideInput ? {width: LABEL_COLUMN_WIDTH} : {layoutData: 'stretchX'})
-  });
-  const input = new TextInput({
-    ...properties,
-    id,
-    text: storedTargets[id] ?? properties.text,
-    layoutData: 'stretchX'
-  }).onTextChanged(storeTargets);
+  return new Composite({layoutData: 'stretchX'}).append(
+    new TextView({id: `label-${id}`, text: label}),
+    new TextInput({
+      ...properties,
+      id,
+      text: storedTargets[id] ?? properties.text
+    }).onTextChanged(storeTargets)
+  );
+}
 
-  return labelBesideInput
-    ? new Row({layoutData: 'stretchX', spacing: 8, alignment: 'centerY'}).append(caption, input)
-    : new Stack({layoutData: 'stretchX', spacing: 2}).append(caption, input);
+// Label beside the input when there is room for it, above it when there is not.
+// Rotation and Split View both change the available width, so the breakpoint is
+// re-evaluated on every resize instead of being fixed at startup. Only layout
+// data changes here — the inputs are never rebuilt, so nothing typed into them
+// is lost when the layout flips.
+function applyFieldLayout(width) {
+  const besideInput = width >= SIDE_BY_SIDE_MIN_WIDTH;
+  for (const {id} of FIELDS) {
+    const caption = $(`#label-${id}`).first();
+    caption.layoutData = besideInput
+      ? {left: 0, width: LABEL_COLUMN_WIDTH, centerY: 0}
+      : {left: 0, right: 0, top: 0};
+    $(`#${id}`).first().layoutData = besideInput
+      ? {left: LABEL_COLUMN_WIDTH + 8, right: 0, top: 0}
+      : {left: 0, right: 0, top: [caption, 2]};
+  }
 }
 
 // Targets outlive a restart, so testing against hosts on the device's own LAN
