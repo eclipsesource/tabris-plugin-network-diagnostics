@@ -16,5 +16,10 @@
     "network",
     "diagnostics"
   ],
-  "author": "EclipseSource"
+  "author": "EclipseSource",
+  "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eclipsesource/tabris-plugin-network-diagnostics.git"
+  }
 }

@@ -7,6 +7,8 @@
   <name>Tabris.js Network Diagnostics Plugin</name>
   <description>Network diagnostics for Tabris.js apps on iOS: interfaces, gateways, DNS servers, ICMP ping, direct DNS queries, HTTP probes and an all-in-one diagnosis with a verdict.</description>
   <author>EclipseSource</author>
+  <license>BSD-3-Clause</license>
+  <repo>https://github.com/eclipsesource/tabris-plugin-network-diagnostics.git</repo>
 
   <engines>
     <engine name="cordova" version=">=3.8.0" />
