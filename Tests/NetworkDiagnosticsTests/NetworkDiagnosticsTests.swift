@@ -126,6 +126,33 @@ final class NetworkDiagnosticsTests: XCTestCase {
         XCTAssertEqual(events.compactMap(\.dnsServerResult).count, 1)
     }
 
+    func testProbeResultsArriveBeforeTheirStageFinishes() async throws {
+        let diagnostics = NetworkDiagnostics(services: try healthyServices())
+
+        let events = await collectEvents(diagnostics, try configuration())
+
+        assertResultsPrecedeStageFinish(events, resultStage: .gatewayPing) { $0.isGatewayResult }
+        assertResultsPrecedeStageFinish(events, resultStage: .dnsServerCheck) { $0.isDNSServerResult }
+        assertResultsPrecedeStageFinish(events, resultStage: .hostPing) { $0.isPingResult }
+        assertResultsPrecedeStageFinish(events, resultStage: .httpProbe) { $0.isHTTPResult }
+    }
+
+    private func assertResultsPrecedeStageFinish(
+        _ events: [DiagnosticEvent],
+        resultStage: DiagnosticStage,
+        isResult: (DiagnosticEvent) -> Bool
+    ) {
+        guard let finished = events.firstIndex(of: .stageFinished(resultStage)) else {
+            XCTFail("\(resultStage) never finished")
+            return
+        }
+        let lastResult = events.lastIndex(where: isResult)
+        XCTAssertNotNil(lastResult, "\(resultStage) produced no result event")
+        if let lastResult {
+            XCTAssertLessThan(lastResult, finished, "\(resultStage) finished before its last result event")
+        }
+    }
+
     func testEmptyStagesStillReportStartAndFinish() async throws {
         let diagnostics = NetworkDiagnostics(services: try healthyServices())
         let config = DiagnosticConfiguration(pingHosts: [], httpHosts: [], dnsTestDomains: [])
@@ -210,4 +237,9 @@ private extension DiagnosticEvent {
     var dnsServerResult: DNSServerInfo? {
         if case let .dnsServerResult(info) = self { info } else { nil }
     }
+
+    var isGatewayResult: Bool { gatewayResult != nil }
+    var isDNSServerResult: Bool { dnsServerResult != nil }
+    var isPingResult: Bool { pingResult != nil }
+    var isHTTPResult: Bool { httpResult != nil }
 }

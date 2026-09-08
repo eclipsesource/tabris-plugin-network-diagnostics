@@ -5,32 +5,38 @@ func withHardTimeout<Output: Sendable>(
     seconds: TimeInterval,
     operation: @escaping @Sendable () async -> Output
 ) async -> Output? {
-    let operationTask = Task { await operation() }
-    let timeoutTask = Task { try? await Task.sleep(for: .seconds(seconds)) }
     let settled = OSAllocatedUnfairLock(initialState: false)
+    let tasks = OSAllocatedUnfairLock<TimeoutTasks>(initialState: TimeoutTasks())
 
     return await withTaskCancellationHandler {
         await withCheckedContinuation { (continuation: CheckedContinuation<Output?, Never>) in
-            Task {
-                let output = await operationTask.value
+            let operationTask = Task {
+                let output = await operation()
 
                 if settled.claim() {
-                    timeoutTask.cancel()
+                    tasks.withLock { $0.timeout?.cancel() }
                     continuation.resume(returning: output)
                 }
             }
-            Task {
-                await timeoutTask.value
+            let timeoutTask = Task {
+                try? await Task.sleep(for: .seconds(seconds))
                 if settled.claim() {
-                    operationTask.cancel()
+                    tasks.withLock { $0.operation?.cancel() }
                     continuation.resume(returning: nil)
                 }
             }
+
+            tasks.withLock { $0 = TimeoutTasks(operation: operationTask, timeout: timeoutTask) }
         }
     } onCancel: {
-        operationTask.cancel()
-        timeoutTask.cancel()
+        tasks.withLock { ($0.operation, $0.timeout) }.0?.cancel()
+        tasks.withLock { $0.timeout }?.cancel()
     }
+}
+
+private struct TimeoutTasks {
+    var operation: Task<Void, Never>?
+    var timeout: Task<Void, Never>?
 }
 
 private extension OSAllocatedUnfairLock where State == Bool {

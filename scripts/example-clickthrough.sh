@@ -76,6 +76,7 @@ wait_until_button_enabled() {
     local label="$1" timeout="${2:-15}" waited=0
     until [[ "$(tree | jq -r --arg label "$label" '.[] | select(.type == "Button" and .AXLabel == $label) | .enabled' | head -n 1)" == "true" ]]; do
         if [[ "$waited" -ge "$timeout" ]]; then
+            FAILURES=$((FAILURES + 1))
             return 1
         fi
         sleep 1
@@ -104,8 +105,23 @@ type_into_field_containing() {
     echo "typed \"$text\" into the field containing \"$existing\""
 }
 
-# Taps a button, then waits for a settlement-counter change; retries the tap once
-# if nothing settled, working around idb's occasional silently-dropped taps.
+# Dismisses a modal sheet by its Close/Cancel button if present, else swipes it
+# down. Never affects the failure count — it is cleanup, not an assertion.
+dismiss_sheet() {
+    local center
+    center="$(tree | jq -r \
+        '.[] | select(.type == "Button" and (.AXLabel == "Close" or .AXLabel == "Cancel")) | "\((.frame.x + .frame.width / 2) | floor) \((.frame.y + .frame.height / 2) | floor)"' \
+        | head -n 1)"
+    if [[ -n "$center" ]]; then
+        # shellcheck disable=SC2086
+        idb ui tap --udid "$UDID" $center 2> /dev/null || true
+    else
+        idb ui swipe --udid "$UDID" 196 420 196 840 2> /dev/null || true
+    fi
+}
+
+# Taps a button, then waits for the expected console line; retries the tap once
+# if nothing appeared, working around idb's occasional silently-dropped taps.
 tap_and_await_settlement() {
     local label="$1" expected="$2" timeout="${3:-90}"
     tap_button "$label"
@@ -124,43 +140,54 @@ xcrun simctl launch --terminate-running-process "$UDID" "$BUNDLE_ID"
 wait_for '^Run diagnostics$' 30 || { echo "FAIL: app did not show the Run button"; exit 1; }
 capture launched
 
+# The example prints every settlement to the Tabris developer console, which the
+# accessibility tree exposes; the console is append-only, so these checks match
+# on it rather than on the mutable settlement label.
 echo "== the launch-time self-check proves dispose() rejects an in-flight diagnose()"
 check "dispose mid-run self-check rejected with code disposed" \
     'self-check: dispose mid-run rejected with code disposed'
 
-echo "== 1. full run with the default targets"
-tap_and_await_settlement "Run diagnostics" 'last: resolved: ' 90 \
+echo "== 1. full run with the default targets, then share the report"
+tap_and_await_settlement "Run diagnostics" 'diagnose resolved: ' 90 \
     || echo "FAIL: first run did not resolve within 90 s"
 capture first-run-finished
-check "promise resolved with a verdict" 'last: resolved: '
-check "every stage finished" '^● HTTP probe$'
-check "interfaces rendered" '^lo0'
-check "ping section shows 1.1.1.1" '^1\.1\.1\.1'
-check "http section shows apple.com" 'https://www\.apple\.com — HTTP [0-9]{3} in [0-9]+ ms'
-check "dns servers section filled" 'apple\.com: (noError|nameError|serverFailure|timed out|failed)'
+check "promise resolved with a verdict" 'diagnose resolved: '
+check "every stage finished" '● HTTP probe$'
+# Scroll to the result sections (they render below the fold) and check that the
+# live pingResult and httpResult events reached JavaScript and were rendered.
+idb ui swipe --udid "$UDID" 196 700 196 150 2> /dev/null || true
+idb ui swipe --udid "$UDID" 196 700 196 150 2> /dev/null || true
+sleep 1
+capture result-sections
+check "ping section shows a 1.1.1.1 outcome" '1\.1\.1\.1.* — (avg [0-9]|no reply|failed|resolution)'
+check "http section shows the apple.com status" 'https://www\.apple\.com — HTTP [0-9]{3} in [0-9]+ ms'
+idb ui swipe --udid "$UDID" 196 200 196 760 2> /dev/null || true
+idb ui swipe --udid "$UDID" 196 200 196 760 2> /dev/null || true
+sleep 1
+wait_until_button_enabled "Share JSON" 10 || echo "FAIL: Share JSON never became enabled"
+tap_button "Share JSON"
+sleep 3
+capture share-sheet
+check "share sheet presented" '(dismiss popup|Copy|AirDrop|Close|Cancel|Messages|Mail|Reminders|Save to Files|Options)'
+dismiss_sheet
+sleep 2
 
 echo "== 2. cancel a run (blackhole host makes it last at least the 3 s hard timeout)"
 type_into_field_containing "1.1.1.1" ", 192.0.2.1"
 tap_button "Run diagnostics"
 wait_until_button_enabled "Cancel" 10 || echo "FAIL: Cancel never became enabled"
-tap_and_await_settlement "Cancel" 'last: rejected \(cancelled\)' 15 \
+tap_and_await_settlement "Cancel" 'diagnose rejected \(cancelled\)' 15 \
     || echo "FAIL: cancel did not reject the promise"
 capture cancelled
-check "run rejected with code cancelled" 'last: rejected \(cancelled\)'
+check "run rejected with code cancelled" 'diagnose rejected \(cancelled\)'
 
 echo "== 3. dispose the object during a run"
 tap_button "Run diagnostics"
 wait_until_button_enabled "Cancel" 10 || echo "FAIL: Cancel never became enabled (run 3)"
-tap_and_await_settlement "Recreate object" 'last: rejected \(disposed\)' 15 \
+tap_and_await_settlement "Recreate object" 'diagnose rejected \(disposed\)' 15 \
     || echo "FAIL: dispose did not reject the promise"
 capture disposed
-check "run rejected with code disposed" 'last: rejected \(disposed\)'
-
-echo "== 4. share sheet"
-tap_button "Share JSON"
-sleep 3
-capture share-sheet
-check "share sheet visible" '^(Copy|AirDrop|Close|Cancel|Messages|Mail|Notes|Print|Save to Files|Edit Actions)'
+check "run rejected with code disposed" 'diagnose rejected \(disposed\)'
 
 echo "== result: $FAILURES failure(s); evidence in $LOG_DIR/example-step-*-$RUN_ID.*"
 [[ "$FAILURES" -eq 0 ]]

@@ -98,8 +98,8 @@ struct ProbeRunner: Sendable {
                 group.addTask { .http(index: index, await probes.probeHTTP(url, method: httpMethod)) }
             }
             for await probe in group {
-                tracker.complete(probe.stage)
                 emit(probe.event)
+                tracker.complete(probe.stage)
                 indexed.append((probe.index, probe))
             }
         }
