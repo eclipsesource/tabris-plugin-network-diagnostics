@@ -8,6 +8,24 @@
 
   <preference name="EnableDeveloperConsole" value="true" />
 
+  <!-- Required by tabris-plugin-network-diagnostics. The Tabris cordova-ios fork
+       reads both preferences on every prepare: deployment-target becomes
+       IPHONEOS_DEPLOYMENT_TARGET, SwiftVersion becomes SWIFT_VERSION. The plugin
+       library needs iOS 16 for ContinuousClock and Task.sleep(for:), and a
+       generated Tabris project declares neither preference on its own. -->
+  <preference name="deployment-target" value="16.0" />
+  <preference name="SwiftVersion" value="5.0" />
+
+  <platform name="ios">
+    <!-- Required by tabris-plugin-network-diagnostics. iOS shows this text the
+         first time the app contacts the local network, which the gateway ping and
+         the DNS server queries do. Without the key those probes fail on a device.
+         Write it for your own users; this wording is only the example's. -->
+    <edit-config target="NSLocalNetworkUsageDescription" file="*-Info.plist" mode="merge">
+      <string>Pings the router and queries the DNS servers on the local network to diagnose connectivity.</string>
+    </edit-config>
+  </platform>
+
   <plugin name="tabris-plugin-network-diagnostics" spec="../" />
 
 </widget>

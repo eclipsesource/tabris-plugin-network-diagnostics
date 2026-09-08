@@ -4,11 +4,39 @@ Network diagnostics for Tabris.js apps on iOS: interfaces, gateways, DNS servers
 ICMP ping, direct DNS queries, HTTP probes, and an all-in-one diagnosis with a
 verdict. Swift port of `ios-network-diagnostics`.
 
+> [!IMPORTANT]
+> **This plugin configures nothing in your application. Three entries are yours to add.**
+> Without the first two it does not compile. Without the third its local network probes —
+> the gateway ping and the DNS server queries — fail on a device, and nothing warns you at
+> install time.
+
+Add to your app's `config.xml`:
+
+```xml
+<!-- iOS 16 for ContinuousClock and Task.sleep(for:), plus a Swift version.
+     A generated Tabris project declares neither. -->
+<preference name="deployment-target" value="16.0" />
+<preference name="SwiftVersion" value="5.0" />
+
+<platform name="ios">
+  <!-- Shown by iOS the first time the app contacts the local network. Write it for
+       your own users; this wording is only the example's. -->
+  <edit-config target="NSLocalNetworkUsageDescription" file="*-Info.plist" mode="merge">
+    <string>Pings the router and queries the DNS servers on the local network to diagnose connectivity.</string>
+  </edit-config>
+</platform>
+```
+
+[`example/cordova/config.xml`](example/cordova/config.xml) is a working copy of all three.
+
+![The example app on an iPad: per-stage progress, a verdict, and the interface, gateway, DNS server, ping and HTTP results of a finished run](docs/images/example-ipad.png)
+
 ## Install
 
 ```xml
 <!-- config.xml -->
-<plugin name="tabris-plugin-network-diagnostics" spec="<git url or local path of this repository>" />
+<plugin name="tabris-plugin-network-diagnostics"
+        spec="git+https://github.com/eclipsesource/tabris-plugin-network-diagnostics.git" />
 ```
 
 ## Quick start
@@ -126,16 +154,11 @@ values in `outcome.state`, never rejections.
 
 ## Requirements
 
-- iOS 16 or later. The plugin injects the `deployment-target` (16.0) and `SwiftVersion` (5.0)
-  preferences into the generated project; an app's own preferences take precedence.
-- Tabris.js 3.10 with its cordova-ios 6.2 platform; no CocoaPods, no entitlements.
+- iOS 16 or later, declared by the app — the block at the top of this file.
+- Tabris.js 3.x with its cordova-ios 6.2 platform; no CocoaPods, no entitlements. The example
+  builds against the nightly, `3.11.0-dev.20260908`.
 - Local Network permission prompt on a device (not on the simulator) the first time a gateway or
-  DNS server on the LAN is contacted. Text via the plugin variable:
-  ```xml
-  <plugin name="tabris-plugin-network-diagnostics" spec="...">
-    <variable name="LOCAL_NETWORK_USAGE_DESCRIPTION" value="..." />
-  </plugin>
-  ```
+  DNS server on the LAN is contacted.
 - Plain `http://` URLs need an App Transport Security exception in the app; the plugin adds none.
 
 ## Example app
@@ -143,6 +166,7 @@ values in `outcome.state`, never rejections.
 ```bash
 example/build.sh                                          # builds for the simulator; last line: APP_PATH=<.app>
 scripts/example-simulator.sh "<APP_PATH>" <simulator-udid> # installs, launches, screenshot + accessibility tree in /tmp/claude
+scripts/example-clickthrough.sh "<APP_PATH>" <simulator-udid> # drives a run, a cancel and a dispose; exits 0 only if every check passed
 ```
 
 ## Development

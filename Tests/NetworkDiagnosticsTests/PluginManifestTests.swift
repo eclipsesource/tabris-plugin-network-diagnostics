@@ -73,9 +73,63 @@ final class PluginManifestTests: XCTestCase {
         XCTAssertEqual(registeredCalls.sorted(), javaScriptCalls.sorted())
     }
 
+    /// The plugin configures nothing in the host application, so the three entries an app
+    /// must declare itself live in exactly two places that have to agree: the README block
+    /// a reader copies from, and the example app that proves the block works. Rationale:
+    /// docs/decisions/2026-09-08T1200Z-host-app-owns-required-configuration.md
+    func testTheHostAppAndNotThePluginDeclaresTheRequiredConfiguration() throws {
+        let manifest = try read("plugin.xml")
+        let exampleConfiguration = try read("example/cordova/config.xml")
+        let readme = try read("README.md")
+
+        XCTAssertTrue(
+            matches(#"<config-file target="(config\.xml|\*-Info\.plist)""#, in: manifest).isEmpty,
+            "plugin.xml must not configure the host application; README.md and the example declare it"
+        )
+        XCTAssertFalse(
+            manifest.contains("LOCAL_NETWORK_USAGE_DESCRIPTION"),
+            "the usage description variable went with the Info.plist munge that used it"
+        )
+
+        for entry in [
+            #"<preference name="deployment-target" value="16.0" />"#,
+            #"<preference name="SwiftVersion" value="5.0" />"#,
+            #"<edit-config target="NSLocalNetworkUsageDescription" file="*-Info.plist" mode="merge">"#,
+        ] {
+            XCTAssertTrue(exampleConfiguration.contains(entry), "example/cordova/config.xml is missing \(entry)")
+            XCTAssertTrue(readme.contains(entry), "README.md does not document \(entry)")
+        }
+    }
+
+    /// Tabris ships buffered JavaScript-to-native operations only on `tabris.flush()`, and
+    /// a promise settlement arrives through a `JSFunctionValue` callback, which — unlike the
+    /// event path — does not flush. Without this every widget write the continuation makes
+    /// sits in the buffer and the interface freezes on a result that already arrived. The
+    /// flush has to be scheduled on a *timer*: `resolve()` only queues the continuation as a
+    /// microtask, so flushing synchronously ships nothing. Rationale, and the measurement
+    /// that ruled out the synchronous variants:
+    /// docs/decisions/2026-09-08T1130Z-flush-after-promise-settlement.md
+    func testEverySettlementSchedulesAFlushOnATimer() throws {
+        let javaScript = try read("www/NetworkDiagnostics.js")
+
+        XCTAssertEqual(
+            matches(
+                #"function (flushAfterContinuations)\(\)\s*\{\s*setTimeout\([^;]*tabris\.flush\(\)"#,
+                in: javaScript
+            ),
+            ["flushAfterContinuations"],
+            "the flush must be scheduled on a timer; a synchronous one runs before the continuation"
+        )
+        XCTAssertEqual(
+            matches(#"\s(flushAfterContinuations)\(\);"#, in: javaScript),
+            ["flushAfterContinuations"],
+            "every settled native call must schedule the flush exactly once"
+        )
+    }
+
     func testReadmeDocumentsEveryPublicJavaScriptMethod() throws {
         let readme = try read("README.md")
-        let publicMethods = matches(#"\n  ([a-z]\w+)\("#, in: try read("www/NetworkDiagnostics.js"))
+        let publicMethods = matches(#"\n  ([a-z]\w+)\([^)]*\)\s*\{"#, in: try read("www/NetworkDiagnostics.js"))
             .filter { !$0.hasPrefix("_") }
 
         XCTAssertFalse(publicMethods.isEmpty)

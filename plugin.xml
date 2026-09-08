@@ -13,38 +13,25 @@
     <engine name="cordova-ios" version=">=6.2.0" />
   </engines>
 
-  <!-- Shown by iOS the first time the app touches the local network (gateway
-       ping, DNS server query). Override per app:
-       <plugin name="tabris-plugin-network-diagnostics" spec="...">
-         <variable name="LOCAL_NETWORK_USAGE_DESCRIPTION" value="..." />
-       </plugin> -->
-  <preference name="LOCAL_NETWORK_USAGE_DESCRIPTION"
-              default="Pings the router and queries the DNS servers on the local network to diagnose connectivity." />
-
   <js-module src="www/NetworkDiagnostics.js" name="NetworkDiagnostics">
     <clobbers target="es.NetworkDiagnostics" />
   </js-module>
 
   <platform name="ios">
 
-    <!-- The library uses ContinuousClock and Task.sleep(for:) (iOS 16) and is
-         written in Swift. Generated Tabris projects declare neither a Swift
-         version nor a deployment target that high; the Tabris cordova-ios
-         fork reads both preferences on every prepare, and an app's own
-         preference takes precedence over these. -->
-    <config-file target="config.xml" parent="/*">
-      <preference name="deployment-target" value="16.0" />
-      <preference name="SwiftVersion" value="5.0" />
-    </config-file>
+    <!-- This plugin configures nothing in the host application. It needs an iOS 16
+         deployment target, a Swift version and the local network usage description,
+         and all three belong to the application: a deployment target raises the
+         minimum iOS version of the whole app, and the usage description is text the
+         app's own users read. README.md states the three entries verbatim under
+         "Required app configuration" and example/cordova/config.xml is a working
+         copy of them. Without them the app fails to build, or the local network
+         probes fail at runtime. -->
 
     <config-file target="*TabrisPlugins.plist" parent="classes">
       <array>
         <string>NetworkDiagnosticsPlugin</string>
       </array>
-    </config-file>
-
-    <config-file target="*-Info.plist" parent="NSLocalNetworkUsageDescription">
-      <string>$LOCAL_NETWORK_USAGE_DESCRIPTION</string>
     </config-file>
 
     <header-file src="src/ios/NetworkDiagnostics-BridgingHeader.h" type="BridgingHeader" />

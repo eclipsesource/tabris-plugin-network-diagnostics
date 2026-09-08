@@ -124,9 +124,14 @@ so a plugin can set both without a hook and the app still overrides:
 </config-file>
 ```
 
-This is what `tabris-plugin-network-diagnostics` does; verified by reading the resolved values with
-`xcodebuild -showBuildSettings` on the generated project, not just grepping `project.pbxproj`. The
-`add-swift-support.js` hook remains the fallback if a future fork stops honouring the preferences.
+The same two preferences work verbatim in an **application's** `config.xml`, with no munge involved.
+That is where `tabris-plugin-network-diagnostics` puts them (`example/cordova/config.xml`): a
+deployment target raises the minimum iOS version of the whole app rather than of one plugin, so it is
+the app's to declare — see `docs/decisions/2026-09-08T1200Z-host-app-owns-required-configuration.md`.
+
+Either way, verify by reading the *resolved* values with `xcodebuild -showBuildSettings` on the
+generated project, not by grepping `project.pbxproj`. The `add-swift-support.js` hook remains the
+fallback if a future fork stops honouring the preferences.
 
 ### Two more integration facts that bite
 
