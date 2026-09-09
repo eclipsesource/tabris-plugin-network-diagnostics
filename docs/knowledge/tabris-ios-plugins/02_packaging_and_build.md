@@ -133,6 +133,39 @@ Either way, verify by reading the *resolved* values with `xcodebuild -showBuildS
 generated project, not by grepping `project.pbxproj`. The `add-swift-support.js` hook remains the
 fallback if a future fork stops honouring the preferences.
 
+### App Store export needs an Xcode account, even with manual signing
+
+`tabris build ios --device --release` archives and signs correctly from
+`cordova/build.json` (`Apple Distribution` plus an explicit profile UUID), and the
+`exportOptions.plist` Cordova generates already asks for `signingStyle: manual`. The
+export step still fails:
+
+```
+DVTDeveloperAccountManager: Failed to load credentials for <apple id>:
+  Invalid credentials in keychain … missing Xcode-Token
+error: exportArchive Copy failed
+** EXPORT FAILED **
+```
+
+The real reason is in the distribution log bundle named in the output
+(`IDEDistribution.standard.log`): `Failed to find an account with App Store Connect
+access for team <team id>`. `xcodebuild -exportArchive` with an App Store method wants
+an authenticated Xcode account regardless of the signing style, and adding
+`destination: export` to the export options does not avoid it.
+
+Two ways out. Sign in again under Xcode → Settings → Accounts, or skip the export: an
+ipa is a zip of `Payload/<App>.app`, and the app inside the archive is already signed
+with the distribution identity, so
+
+```bash
+mkdir -p ipa/Payload && ditto "<archive>/Products/Applications/<App>.app" "ipa/Payload/<App>.app"
+(cd ipa && zip -qry ../App.ipa Payload)
+```
+
+produces an ipa that `xcrun altool --validate-app` accepts with no errors. No
+`SwiftSupport` directory is needed: Swift's runtime ships in the OS from iOS 12.2, well
+below any deployment target this repository supports.
+
 ### Two more integration facts that bite
 
 - **Unique bridging-header basename.** Cordova flattens every plugin file to
