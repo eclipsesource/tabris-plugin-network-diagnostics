@@ -1,0 +1,140 @@
+name: Build the example app
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_app_store:
+        description: 'Also upload the build to App Store Connect'
+        type: boolean
+        default: false
+  # Quarterly, as a canary. The example builds against the Tabris nightly on a
+  # rolling runner image, so it can rot without anyone touching this repository.
+  # Beware: GitHub disables a scheduled workflow after 60 days of repository
+  # inactivity and mails the admins, so a quiet quarter means re-enabling it by
+  # hand. The Actions tab always works regardless.
+  schedule:
+    - cron: '0 4 1 */3 *'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: App Store build
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+    steps:
+
+      - name: Check out the plugin
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # The organisation shares every TABRIS_IOS_* secret with this repository,
+      # so no environment or repository secret has to be configured here. The
+      # profile is the wildcard one, which is what covers the example's
+      # com.eclipsesource.tabris.networkdiagnostics.example bundle identifier.
+      - name: Install the signing certificate and provisioning profile
+        uses: eclipsesource/prepare-for-signing-action@v2
+        with:
+          app_identifier: 'com.eclipsesource.*'
+          profile_type: appstore
+          match_git_url: ${{ secrets.TABRIS_IOS_MATCH_GIT_URL }}
+          match_git_branch: ${{ secrets.TABRIS_IOS_MATCH_GIT_BRANCH }}
+          match_git_ssh_key: ${{ secrets.TABRIS_IOS_MATCH_GIT_SSH_KEY }}
+          match_password: ${{ secrets.TABRIS_IOS_MATCH_PASSWORD }}
+          fastlane_team_id: ${{ secrets.TABRIS_IOS_FASTLANE_TEAM_ID }}
+          fastlane_user: ${{ secrets.TABRIS_IOS_FASTLANE_USER }}
+          verbose: 'false'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install the Tabris CLI
+        run: npm install -g tabris-cli
+
+      # cordova-ios writes build.json's provisioningProfile into
+      # PROVISIONING_PROFILE, which takes a UUID, so the value has to name the
+      # very profile match just delivered. If match ever regenerates it the UUID
+      # changes and xcodebuild would fail with a signing error deep in its log;
+      # failing here instead names the replacement to put into build.json.
+      - name: Check the profile build.json names is installed
+        run: |
+          PROFILE_DIRS=(
+            "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+            "$HOME/Library/MobileDevice/Provisioning Profiles"
+          )
+          UUID="$(jq -er '.ios.release.provisioningProfile' example/cordova/build.json)"
+          for dir in "${PROFILE_DIRS[@]}"; do
+            if [ -f "$dir/$UUID.mobileprovision" ]; then
+              echo "build.json asks for $UUID, found in $dir"
+              exit 0
+            fi
+          done
+          echo "::error::build.json asks for provisioning profile $UUID, which match did not deliver"
+          echo "installed profiles:"
+          for dir in "${PROFILE_DIRS[@]}"; do
+            for profile in "$dir"/*.mobileprovision; do
+              [ -f "$profile" ] || continue
+              name="$(security cms -D -i "$profile" | plutil -extract Name raw -o - -)"
+              echo "  $(basename "$profile" .mobileprovision)  $name"
+            done
+          done
+          exit 1
+
+      - name: Build for the App Store
+        env:
+          TABRIS_BUILD_KEY: ${{ secrets.TABRIS_IOS_BUILD_KEY }}
+        run: example/build.sh --app-store
+
+      - name: Collect the ipa
+        run: |
+          IPA_PATH="$(cat /tmp/claude/netdiag-example-ipa-path.txt)"
+          mkdir -p artifacts
+          cp "$IPA_PATH" artifacts/
+          echo "IPA_PATH=$PWD/artifacts/$(basename "$IPA_PATH")" >> "$GITHUB_ENV"
+
+      - name: Publish the ipa as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-app-ipa
+          path: artifacts/*.ipa
+          retention-days: 30
+
+      # Never on the schedule: a quarterly canary should tell you the build still
+      # works, not consume an App Store build number behind your back.
+      #
+      # altool is called directly with the organisation secrets rather than
+      # through scripts/upload-appstore.sh, which is a developer-machine tool and
+      # takes its password out of a personal password store.
+      #
+      # Validation runs first because a build number App Store Connect has
+      # accepted is spent for good. altool exits 0 even when it fails, so its
+      # exit status is worthless and the JSON payload decides.
+      - name: Upload to App Store Connect
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_app_store }}
+        env:
+          FASTLANE_USER: ${{ secrets.TABRIS_IOS_FASTLANE_USER }}
+          FASTLANE_APP_SPECIFIC_PASSWORD: ${{ secrets.TABRIS_IOS_FASTLANE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          altool() {
+            local output
+            output="$(xcrun altool "$1" --type ios --file "$IPA_PATH" \
+              --username "$FASTLANE_USER" --password '@env:FASTLANE_APP_SPECIFIC_PASSWORD' \
+              --output-format json)" || true
+            if ! jq -e . > /dev/null 2>&1 <<< "$output"; then
+              echo "::error::altool $1 returned no parseable result"
+              printf '%s\n' "$output"
+              return 1
+            fi
+            if jq -e 'has("product-errors")' > /dev/null <<< "$output"; then
+              jq -r '."product-errors"[] | "::error::\(.code): \(.message)"' <<< "$output"
+              return 1
+            fi
+            echo "altool $1: no errors reported"
+          }
+          altool --validate-app
+          altool --upload-app

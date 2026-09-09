@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Validates an ipa against App Store Connect and, unless --validate-only is
-# given, uploads it. Validation runs first every time: it costs nothing and a
-# build number that App Store Connect has accepted can never be reused.
+# given, uploads it. A developer-machine tool: the app-specific password comes
+# out of gopass. The GitHub workflow does not use this script — it calls altool
+# with the organisation's secrets instead, because a CI runner has no password
+# store and should never reach for a personal one.
 #
 #   APPLE_ID=… GOPASS_ENTRY=… upload-appstore.sh <path-to.ipa> [--validate-only]
 #
-# The app-specific password is read from gopass at call time and handed to
-# altool through the environment, so it stays out of the process list, the shell
-# history and any log. The Apple ID and the gopass path are inputs rather than
-# defaults on purpose: they identify a person, not this project.
+# The password is read at call time and handed to altool through the
+# environment, so it stays out of the process list and the logs. The Apple ID
+# and the gopass path are inputs rather than defaults on purpose: they identify
+# a person, not this project.
+#
+# Validation always runs first, because a build number App Store Connect has
+# accepted can never be reused.
 set -euo pipefail
 
 USAGE="usage: APPLE_ID=… GOPASS_ENTRY=… upload-appstore.sh <path-to.ipa> [--validate-only]"
@@ -27,13 +32,33 @@ command -v gopass > /dev/null || {
     exit 1
 }
 
-altool_with_password() {
-    ALTOOL_PASSWORD="$(gopass show -o "$GOPASS_ENTRY")" \
-        xcrun altool "$1" -t ios -u "$APPLE_ID" -p '@env:ALTOOL_PASSWORD' -f "$IPA"
+ALTOOL_PASSWORD="$(gopass show -o "$GOPASS_ENTRY")"
+export ALTOOL_PASSWORD
+
+# altool exits 0 even when it fails, so its exit status cannot be trusted and
+# the JSON payload decides: a product-errors key means failure, and output that
+# is not parseable JSON counts as one too. Its human-readable progress log,
+# including the delivery UUID, still reaches the terminal on stderr.
+altool() {
+    local output
+    output="$(xcrun altool "$1" --type ios --file "$IPA" \
+        --username "$APPLE_ID" --password '@env:ALTOOL_PASSWORD' \
+        --output-format json)" || true
+
+    if ! jq -e . > /dev/null 2>&1 <<< "$output"; then
+        echo "altool $1 returned no parseable result:" >&2
+        printf '%s\n' "$output" >&2
+        return 1
+    fi
+    if jq -e 'has("product-errors")' > /dev/null <<< "$output"; then
+        jq -r '."product-errors"[] | "  \(.code): \(.message)"' <<< "$output" >&2
+        return 1
+    fi
+    echo "  no errors reported"
 }
 
 echo "== validating $IPA"
-altool_with_password --validate-app
+altool --validate-app
 
 if [[ "$VALIDATE_ONLY" == "--validate-only" ]]; then
     echo "== --validate-only given, not uploading"
@@ -41,4 +66,4 @@ if [[ "$VALIDATE_ONLY" == "--validate-only" ]]; then
 fi
 
 echo "== uploading $IPA"
-altool_with_password --upload-app
+altool --upload-app
