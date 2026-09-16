@@ -7,3 +7,7 @@ example/build/
 example/node_modules/
 example/package-lock.json
 .DS_Store
+example_typescript/build/
+example_typescript/dist/
+example_typescript/node_modules/
+example_typescript/package-lock.json

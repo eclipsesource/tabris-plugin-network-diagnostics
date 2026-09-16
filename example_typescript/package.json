@@ -1,0 +1,17 @@
+{
+  "title": "Tabris.js Network Diagnostics Plugin TypeScript Example",
+  "description": "TypeScript example for the Tabris.js Network Diagnostics plugin.",
+  "main": "dist/app.js",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . -w --preserveWatchOutput"
+  },
+  "dependencies": {
+    "tabris": "3.11.0-dev.20260908"
+  },
+  "devDependencies": {
+    "tabris-plugin-network-diagnostics": "file:..",
+    "typescript": "^5.6.0"
+  }
+}

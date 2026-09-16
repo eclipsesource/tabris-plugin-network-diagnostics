@@ -79,7 +79,9 @@ final class PluginManifestTests: XCTestCase {
     /// docs/decisions/2026-09-08T1200Z-host-app-owns-required-configuration.md
     func testTheHostAppAndNotThePluginDeclaresTheRequiredConfiguration() throws {
         let manifest = try read("plugin.xml")
-        let exampleConfiguration = try read("example/cordova/config.xml")
+        let exampleConfigurations = try [
+            "example/cordova/config.xml", "example_typescript/cordova/config.xml",
+        ].map { ($0, try read($0)) }
         let readme = try read("README.md")
 
         XCTAssertTrue(
@@ -96,8 +98,41 @@ final class PluginManifestTests: XCTestCase {
             #"<preference name="SwiftVersion" value="5.0" />"#,
             #"<edit-config target="NSLocalNetworkUsageDescription" file="*-Info.plist" mode="merge">"#,
         ] {
-            XCTAssertTrue(exampleConfiguration.contains(entry), "example/cordova/config.xml is missing \(entry)")
+            for (path, configuration) in exampleConfigurations {
+                XCTAssertTrue(configuration.contains(entry), "\(path) is missing \(entry)")
+            }
             XCTAssertTrue(readme.contains(entry), "README.md does not document \(entry)")
+        }
+    }
+
+    /// The type declarations are hand-written next to the JavaScript module, and nothing
+    /// compiles the two against each other: a method or event added to `www/` without its
+    /// declaration is invisible to a TypeScript app, which is exactly the situation the
+    /// declarations exist to prevent. Rationale:
+    /// docs/decisions/2026-09-16T1530Z-typescript-declarations-and-dual-install.md
+    func testTypeDeclarationsCoverEveryPublicMethodAndEvent() throws {
+        let javaScript = try read("www/NetworkDiagnostics.js")
+        let declarations = try read("types/index.d.ts")
+        let publicMethods = matches(#"\n  ([a-z]\w+)\([^)]*\)\s*\{"#, in: javaScript)
+        let events = matches(#"\n  (\w+): \{native: true\}"#, in: javaScript)
+
+        XCTAssertEqual(
+            matches(#""types":\s*"([^"]+)""#, in: try read("package.json")),
+            ["./types/index.d.ts"]
+        )
+        XCTAssertFalse(publicMethods.isEmpty)
+        XCTAssertFalse(events.isEmpty)
+        for method in publicMethods {
+            XCTAssertTrue(
+                declarations.contains("\n      \(method)("),
+                "types/index.d.ts does not declare \(method)()"
+            )
+        }
+        for event in events {
+            XCTAssertTrue(
+                declarations.contains("\n      \(event): "),
+                "types/index.d.ts does not declare the \(event) event"
+            )
         }
     }
 

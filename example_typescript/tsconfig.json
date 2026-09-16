@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2019",
+    "lib": ["es2019"],
+    "rootDir": "src",
+    "outDir": "dist",
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "alwaysStrict": true,
+    "skipLibCheck": true,
+    "inlineSourceMap": true,
+    "preserveSymlinks": true,
+    "types": ["tabris-plugin-network-diagnostics"]
+  },
+  "include": ["src"]
+}

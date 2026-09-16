@@ -39,6 +39,32 @@ Add to your app's `config.xml`:
         spec="git+https://github.com/eclipsesource/tabris-plugin-network-diagnostics.git" />
 ```
 
+## TypeScript
+
+The plugin ships type declarations (`types/index.d.ts`) for the global `es`
+namespace it installs. `tabris build` compiles the app **before** Cordova adds
+any plugin, so the declarations have to reach the compiler through npm, as a
+devDependency of the app; the `<plugin>` entry above still supplies the runtime
+object. Both point at the same version.
+
+```bash
+npm install --save-dev git+https://github.com/eclipsesource/tabris-plugin-network-diagnostics.git
+```
+
+```jsonc
+// tsconfig.json
+{"compilerOptions": {"types": ["tabris-plugin-network-diagnostics"]}}
+```
+
+Every `.ts` file then sees `es.NetworkDiagnostics`, `es.Report`, `es.PingOutcome`
+and the other shapes below. Alternatively, one file can carry
+`/// <reference types="tabris-plugin-network-diagnostics" />` instead of the
+tsconfig entry. Do not `import` the package: the import would survive into the
+compiled JavaScript as a `require()` of a package the app bundle does not carry.
+Rejections are typed as `es.NetworkDiagnosticsError`, whose `code` is one of the
+codes listed under Errors. [`example_typescript/`](example_typescript/) is a
+working copy of this setup.
+
 ## Quick start
 
 ```js
@@ -161,10 +187,13 @@ values in `outcome.state`, never rejections.
   DNS server on the LAN is contacted.
 - Plain `http://` URLs need an App Transport Security exception in the app; the plugin adds none.
 
-## Example app
+## Example apps
+
+`example/` is the JavaScript app, `example_typescript/` the same app in TypeScript.
 
 ```bash
 example/build.sh                                          # builds for the simulator; last line: APP_PATH=<.app>
+example_typescript/build.sh                               # the TypeScript app, same output
 scripts/example-simulator.sh "<APP_PATH>" <simulator-udid> # installs, launches, screenshot + accessibility tree in /tmp/claude
 scripts/example-clickthrough.sh "<APP_PATH>" <simulator-udid> # drives a run, a cancel and a dispose; exits 0 only if every check passed
 ```

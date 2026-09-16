@@ -1,0 +1,47 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget xmlns="http://www.w3.org/ns/widgets"
+        id="com.eclipsesource.tabris.networkdiagnostics.example.typescript"
+        version="1.0.0"
+        ios-CFBundleVersion="$EXAMPLE_BUILD_NUMBER">
+  <name>Tabris.js Network Diagnostics Plugin TypeScript Example</name>
+  <description>TypeScript example for the Tabris.js Network Diagnostics plugin.</description>
+  <author email="tabris@eclipsesource.com" href="https://tabrisjs.com">EclipseSource</author>
+
+  <!-- This and ios-CFBundleVersion above are filled in by build.sh through the
+       Tabris CLI's variables flag, which is why the example is built through
+       that script rather than the CLI directly. The developer console stays on
+       for the simulator build, where the clickthrough reads the plugin's log
+       lines out of it, and is off for the App Store build, where it would show
+       testers a file:// address bar. CFBundleVersion has to be an attribute of
+       widget rather than a preference: the cordova-ios fork reads it with
+       getAttribute, which only looks at the root element. -->
+  <preference name="EnableDeveloperConsole" value="$EXAMPLE_DEVELOPER_CONSOLE" />
+
+  <!-- Required by tabris-plugin-network-diagnostics. The Tabris cordova-ios fork
+       reads both preferences on every prepare: deployment-target becomes
+       IPHONEOS_DEPLOYMENT_TARGET, SwiftVersion becomes SWIFT_VERSION. The plugin
+       library needs iOS 16 for ContinuousClock and Task.sleep(for:), and a
+       generated Tabris project declares neither preference on its own. -->
+  <preference name="deployment-target" value="16.0" />
+  <preference name="SwiftVersion" value="5.0" />
+
+  <platform name="ios">
+    <!-- Answered here so App Store Connect stops asking on every upload. The app
+         encrypts nothing of its own; its only cryptography is HTTPS through
+         URLSession, which is exempt. -->
+    <edit-config target="ITSAppUsesNonExemptEncryption" file="*-Info.plist" mode="merge">
+      <false/>
+    </edit-config>
+
+    <!-- Required by tabris-plugin-network-diagnostics. iOS shows this text the
+         first time the app contacts the local network, which the gateway ping and
+         the DNS server queries do. Without the key those probes fail on a device.
+         Write it for your own users; this wording is only the example's. -->
+    <edit-config target="NSLocalNetworkUsageDescription" file="*-Info.plist" mode="merge">
+      <string>Pings the router and queries the DNS servers on the local network to diagnose connectivity.</string>
+    </edit-config>
+  </platform>
+
+  <plugin name="tabris-plugin-network-diagnostics" spec="../" />
+
+</widget>

@@ -21,5 +21,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/eclipsesource/tabris-plugin-network-diagnostics.git"
-  }
+  },
+  "types": "./types/index.d.ts"
 }
